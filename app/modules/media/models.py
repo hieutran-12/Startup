@@ -1,15 +1,29 @@
 import uuid
 from enum import StrEnum
 
-from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Index, Integer, String, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.db import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.core.db import Base, TimestampMixin, UUIDPrimaryKeyMixin, enum_check
 
 
 class MediaStatus(StrEnum):
     PENDING = "pending"  # đã cấp link upload, chưa xác nhận
     READY = "ready"
+
+
+class MediaKind(StrEnum):
+    IMAGE = "image"
+    AUDIO = "audio"
 
 
 class Album(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -25,7 +39,16 @@ class Album(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 class Media(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "media"
     __table_args__ = (
-        CheckConstraint("status IN ('pending', 'ready')", name="status_valid"),
+        CheckConstraint(enum_check("status", MediaStatus), name="status_valid"),
+        CheckConstraint(enum_check("kind", MediaKind), name="kind_valid"),
+        # File âm thanh không có kích thước ảnh và không nằm trong album
+        CheckConstraint(
+            f"kind = '{MediaKind.IMAGE}' OR "
+            "(width IS NULL AND height IS NULL AND album_id IS NULL)",
+            name="audio_has_no_image_fields",
+        ),
+        # Đích đến của các khóa ngoại kép từ invitations (*_media_id)
+        UniqueConstraint("invitation_id", "id"),
         Index("ix_media_invitation_position", "invitation_id", "position"),
     )
 
@@ -36,6 +59,7 @@ class Media(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     album_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("albums.id", ondelete="SET NULL"), index=True
     )
+    kind: Mapped[str] = mapped_column(String(8))
     storage_key: Mapped[str] = mapped_column(String(300), unique=True)
     original_filename: Mapped[str | None] = mapped_column(String(255))
     mime_type: Mapped[str] = mapped_column(String(100))

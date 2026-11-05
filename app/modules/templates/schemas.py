@@ -14,4 +14,4 @@ class TemplateOut(BaseModel):
     thumbnail_url: str | None
     category: str
     is_premium: bool
-    field_schema: dict[str, Any]
+    manifest: dict[str, Any]  # schema TemplateManifest: Bước 3

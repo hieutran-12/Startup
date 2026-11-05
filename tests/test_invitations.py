@@ -36,7 +36,7 @@ async def test_list_templates_hides_inactive(client: AsyncClient, templates) -> 
     assert [t["key"] for t in classic.json()] == ["classic-01"]
 
 
-async def test_create_generates_slug_title_and_event_date(
+async def test_create_generates_slug_and_title(
     client: AsyncClient, templates, auth
 ) -> None:
     first = await _create(client, auth)
@@ -44,7 +44,6 @@ async def test_create_generates_slug_title_and_event_date(
     assert first["title"] == "Nam & Lan"
     assert first["status"] == "draft"
     assert first["template_key"] == "classic-01"
-    assert first["event_date"] == "2026-12-20"
     assert first["content"]["custom_field_of_template"] == {"anything": True}
 
     second = await _create(client, auth)
@@ -121,11 +120,6 @@ async def test_update_invitation(client: AsyncClient, templates, auth) -> None:
     assert body["slug"] == "nam-va-lan"
     assert body["content"]["greeting"] == "Trân trọng kính mời"
     assert body["title"] == "Nam & Lan"  # không gửi thì giữ nguyên
-
-    cleared = await client.patch(
-        f"/invitations/{inv['id']}", json={"event_date": None}, headers=auth
-    )
-    assert cleared.json()["event_date"] is None
 
     premium = await client.patch(
         f"/invitations/{inv['id']}", json={"template_key": "vintage-01"}, headers=auth

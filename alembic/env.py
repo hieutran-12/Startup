@@ -12,10 +12,16 @@ from app.models import Base
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
-if config.config_file_name is not None:
+# Test truyền sẵn connection (tests/conftest.py): không cấu hình lại logging của pytest
+shared_connection: Connection | None = config.attributes.get("connection")
+
+if config.config_file_name is not None and shared_connection is None:
     fileConfig(config.config_file_name)
 
 target_metadata = Base.metadata
+
+# So cả kiểu cột và DEFAULT để autogenerate phát hiện model lệch migration
+COMPARE_OPTIONS = {"compare_type": True, "compare_server_default": True}
 
 
 def run_migrations_offline() -> None:
@@ -24,14 +30,14 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        compare_type=True,
+        **COMPARE_OPTIONS,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(connection=connection, target_metadata=target_metadata, **COMPARE_OPTIONS)
     with context.begin_transaction():
         context.run_migrations()
 
@@ -49,5 +55,7 @@ async def run_async_migrations() -> None:
 
 if context.is_offline_mode():
     run_migrations_offline()
+elif shared_connection is not None:
+    do_run_migrations(shared_connection)
 else:
     asyncio.run(run_async_migrations())

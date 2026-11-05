@@ -1,6 +1,7 @@
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
+from enum import StrEnum
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -21,6 +22,11 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+
+def enum_check(column: str, values: type[StrEnum]) -> str:
+    """Biểu thức CHECK `<cột> IN (...)` sinh từ StrEnum, để tập giá trị chỉ khai báo một chỗ."""
+    return f"{column} IN ({', '.join(f"'{v.value}'" for v in values)})"
 
 
 class UUIDPrimaryKeyMixin:

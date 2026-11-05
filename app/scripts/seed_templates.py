@@ -21,8 +21,8 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "Bố cục truyền thống, chữ serif, tông kem và vàng đồng.",
         "category": "classic",
         "is_premium": False,
-        "sort_order": 10,
-        "field_schema": {
+        "position": 10,
+        "manifest": {
             "sections": ALL_SECTIONS,
             "max_gallery_images": 30,
             "theme": {"primary_color": ["#B08D57", "#8C6A43", "#A3485A"]},
@@ -34,8 +34,8 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "Nhiều khoảng trắng, một ảnh bìa lớn, phù hợp ảnh cưới đẹp.",
         "category": "minimal",
         "is_premium": False,
-        "sort_order": 20,
-        "field_schema": {
+        "position": 20,
+        "manifest": {
             "sections": ["couple", "events", "greeting", "gallery", "bank_accounts"],
             "max_gallery_images": 12,
             "theme": {"primary_color": ["#1F1F1F", "#5B6C5D", "#7A6F9B"]},
@@ -47,8 +47,8 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "Hoạ tiết hoa vẽ tay, hợp đám cưới ngoài trời.",
         "category": "floral",
         "is_premium": False,
-        "sort_order": 30,
-        "field_schema": {
+        "position": 30,
+        "manifest": {
             "sections": ALL_SECTIONS,
             "max_gallery_images": 24,
             "theme": {"primary_color": ["#C7798A", "#6E8B5B", "#D19A4F"]},
@@ -60,8 +60,8 @@ TEMPLATES: list[dict[str, Any]] = [
         "description": "Phong cách thư tay xưa, có hiệu ứng mở phong bì.",
         "category": "vintage",
         "is_premium": True,
-        "sort_order": 40,
-        "field_schema": {"sections": ALL_SECTIONS, "max_gallery_images": 40},
+        "position": 40,
+        "manifest": {"sections": ALL_SECTIONS, "max_gallery_images": 40},
     },
 ]
 

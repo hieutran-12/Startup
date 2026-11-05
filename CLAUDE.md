@@ -47,10 +47,11 @@ uv run alembic upgrade head                # chạy migration
 uv run python -m app.scripts.seed_templates  # seed mẫu thiệp
 uv run python -m app.scripts.init_storage    # tạo bucket, CORS (lần đầu)
 uv run fastapi dev app/main.py             # chạy app: http://localhost:8000/docs
-uv run pytest                              # test (database thiepcuoi_test)
+uv run pytest                              # test (thiepcuoi_test, schema dựng bằng alembic upgrade head)
 uv run ruff check .                        # lint
-uv run alembic revision --autogenerate     # kiểm tra model khớp migration: không được sinh thay đổi
+uv run alembic check                       # model khớp migration (như autogenerate, không ghi file)
 ```
+Sửa migration 0001 thì DB dev phải dựng lại: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` rồi upgrade, seed.
 Windows: `alembic.ini` chỉ dùng ký tự ASCII (Alembic đọc .ini bằng cp1252). Chạy script qua pipe thì đặt `PYTHONIOENCODING=utf-8`.
 
 ## Mục lục: tác vụ → file cần đọc

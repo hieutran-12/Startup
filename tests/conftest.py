@@ -1,14 +1,19 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import text
+from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 os.environ["APP_ENV"] = "test"
+
+ROOT = Path(__file__).resolve().parent.parent
 
 from app.core.config import settings  # noqa: E402
 from app.core.db import get_db  # noqa: E402
@@ -53,13 +58,24 @@ class FakeStorage:
         return key
 
 
+def _upgrade_to_head(connection: Connection) -> None:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("script_location", str(ROOT / "alembic"))
+    # env.py chạy migration trên connection này thay vì tự mở kết nối tới DATABASE_URL
+    config.attributes["connection"] = connection
+    command.upgrade(config, "head")
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _create_schema() -> None:
+    """Dựng schema bằng migration (không dùng create_all) để test kiểm tra luôn migration 0001."""
+
     async def run() -> None:
         engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.execute(text("DROP SCHEMA public CASCADE"))
+            await conn.execute(text("CREATE SCHEMA public"))
+            await conn.run_sync(_upgrade_to_head)
         await engine.dispose()
 
     asyncio.run(run())
@@ -82,13 +98,16 @@ def session_maker(db_engine: AsyncEngine) -> async_sessionmaker:
 
 @pytest.fixture
 async def templates(session_maker: async_sessionmaker) -> dict[str, Template]:
+    # manifest rỗng cho tới Bước 3 (schema TemplateManifest)
     items = {
-        "classic-01": Template(key="classic-01", name="Cổ điển", category="classic"),
-        "minimal-01": Template(key="minimal-01", name="Tối giản", category="minimal"),
+        "classic-01": Template(key="classic-01", name="Cổ điển", category="classic", manifest={}),
+        "minimal-01": Template(key="minimal-01", name="Tối giản", category="minimal", manifest={}),
         "vintage-01": Template(
-            key="vintage-01", name="Hoài cổ", category="vintage", is_premium=True
+            key="vintage-01", name="Hoài cổ", category="vintage", is_premium=True, manifest={}
         ),
-        "old-01": Template(key="old-01", name="Ngừng dùng", category="classic", is_active=False),
+        "old-01": Template(
+            key="old-01", name="Ngừng dùng", category="classic", is_active=False, manifest={}
+        ),
     }
     async with session_maker() as db:
         db.add_all(items.values())

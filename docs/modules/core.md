@@ -1,15 +1,19 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Từ Bước 1 có thêm tầng chuẩn hóa dữ liệu request và định dạng lỗi chung.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Từ Bước 1 có thêm tầng chuẩn hóa dữ liệu request và định dạng lỗi chung. Bước 2: migration 0001 viết lại, test dựng schema bằng migration.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1)
 - `app/core/schemas.py`: `StrictModel`, base model của schema request (Bước 1)
 - `app/core/errors.py`: `AppError`, `error_details`, handler lỗi (sửa ở Bước 1)
-- `config.py`, `db.py` (naming convention), `security.py`, `deps.py`, `storage.py`, `revalidate.py`: giữ từ khung
+- `app/core/db.py`: `Base` (naming convention), mixin id/timestamp, `enum_check` (Bước 2)
+- `alembic/versions/20261104_0001_initial_schema.py`: toàn bộ 7 bảng (viết lại ở Bước 2)
+- `alembic/env.py`: `COMPARE_OPTIONS` (so kiểu và DEFAULT), nhận connection truyền vào (Bước 2)
+- `config.py`, `security.py`, `deps.py`, `storage.py`, `revalidate.py`: giữ từ khung
 
 ## API công khai
+- `enum_check(column, StrEnum)`: chuỗi `<cột> IN ('a', 'b')` cho `CheckConstraint`; tên CHECK đặt dạng `name="<cột>_valid"`, convention thêm tiền tố `ck_<bảng>_`
 - `StrictModel`: `strict=True`, `extra="forbid"`
 - `SingleLine(n)` / `RequiredSingleLine(n)`: NFC, trim, gộp dấu cách Unicode (kể cả NBSP) thành một; Cc, U+2028/U+2029 → `invalid_characters`
 - `MultiLine(n)` / `RequiredMultiLine(n)`: NFC, trim, `\r\n`/`\r` → `\n`, tối đa 2 dòng trống liền nhau (dòng chỉ có khoảng trắng tính là trống); cho `\n`, `\t`, ký tự Cc khác → `invalid_characters`
@@ -31,6 +35,12 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - Thứ tự chuẩn hóa chuỗi → `docs/spec/04-nghiep-vu.md` › Chuẩn hóa chuỗi
 - Kiểu dữ liệu, NULL/rỗng, strict, extra=forbid → `docs/spec/02-nguyen-tac-va-quy-chuan.md` › Quy chuẩn dữ liệu
 - Định dạng lỗi, mã lỗi trường → `docs/spec/05-api.md` › Định dạng lỗi
+
+## Migration và schema test (Bước 2)
+- Model là nguồn để so; migration viết tay, chép literal (không import enum từ `app`) để migration không đổi theo code.
+- `tests/conftest.py`: mỗi phiên test `DROP SCHEMA public CASCADE` trên `thiepcuoi_test` rồi `alembic upgrade head` qua `config.attributes["connection"]`; `env.py` thấy connection này thì không gọi `fileConfig`.
+- `tests/test_db_schema.py::test_migration_matches_models` chạy `compare_metadata` (tương đương `alembic check`). Autogenerate không so CHECK, nên mỗi CHECK có test riêng trên schema của migration.
+- Constraint có tên tường minh khi convention cho tên trùng (khóa ngoại kép của invitations, xem `invitations.md`).
 
 ## Ánh xạ lỗi Pydantic → mã spec (`errors.py`)
 - `missing`, hoặc `null` gửi cho trường không nhận null (trừ trường lạ) → `required`

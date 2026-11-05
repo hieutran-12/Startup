@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl
@@ -77,7 +77,6 @@ class InvitationCreate(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     slug: Slug | None = None  # bỏ trống thì hệ thống tự sinh từ tên cô dâu chú rể
     content: InvitationContent = Field(default_factory=InvitationContent)
-    event_date: date | None = None
 
 
 class InvitationUpdate(BaseModel):
@@ -87,7 +86,6 @@ class InvitationUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
     slug: Slug | None = None
     content: InvitationContent | None = None
-    event_date: date | None = None
 
 
 class InvitationOut(BaseModel):
@@ -99,7 +97,6 @@ class InvitationOut(BaseModel):
     status: str
     template_key: str
     content: dict[str, Any]
-    event_date: date | None
     published_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -129,7 +126,6 @@ class PublicInvitationOut(BaseModel):
     slug: str
     template_key: str
     content: dict[str, Any]
-    event_date: date | None
     published_at: datetime | None
     updated_at: datetime
     albums: list[PublicAlbum]

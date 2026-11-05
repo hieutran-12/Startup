@@ -11,7 +11,7 @@ async def list_active(db: AsyncSession, category: str | None = None) -> Sequence
     stmt = select(Template).where(Template.is_active.is_(True))
     if category:
         stmt = stmt.where(Template.category == category)
-    stmt = stmt.order_by(Template.sort_order, Template.name)
+    stmt = stmt.order_by(Template.position, Template.name)
     return (await db.scalars(stmt)).all()
 
 

@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.errors import bad_request, not_found
 from app.core.storage import Storage
 from app.modules.invitations.models import Invitation
-from app.modules.media.models import Album, Media, MediaStatus
+from app.modules.media.models import Album, Media, MediaKind, MediaStatus
 from app.modules.media.schemas import (
     AlbumCreate,
     AlbumOut,
@@ -95,6 +95,7 @@ async def create_upload(
         id=media_id,
         invitation_id=invitation.id,
         album_id=data.album_id,
+        kind=MediaKind.IMAGE.value,  # file âm thanh: Bước 7
         storage_key=f"invitations/{invitation.id}/{media_id}.{extension}",
         original_filename=data.filename,
         mime_type=content_type,

@@ -1,6 +1,6 @@
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -89,11 +89,6 @@ def _default_title(content: InvitationContent) -> str:
     return "Thiệp cưới của tôi"
 
 
-def _infer_event_date(content: InvitationContent) -> date | None:
-    dates = [e.starts_at.date() for e in content.events if e.starts_at is not None]
-    return min(dates) if dates else None
-
-
 async def create(db: AsyncSession, owner: User, data: InvitationCreate) -> Invitation:
     count = await db.scalar(
         select(func.count()).select_from(Invitation).where(Invitation.owner_id == owner.id)
@@ -119,7 +114,6 @@ async def create(db: AsyncSession, owner: User, data: InvitationCreate) -> Invit
         slug=slug,
         title=data.title or _default_title(data.content),
         content=data.content.model_dump(mode="json"),
-        event_date=data.event_date or _infer_event_date(data.content),
     )
     db.add(invitation)
     try:
@@ -152,11 +146,6 @@ async def update(
 
     if "content" in fields and data.content is not None:
         invitation.content = data.content.model_dump(mode="json")
-        if "event_date" not in fields and invitation.event_date is None:
-            invitation.event_date = _infer_event_date(data.content)
-
-    if "event_date" in fields:
-        invitation.event_date = data.event_date
 
     try:
         await db.commit()
@@ -235,7 +224,6 @@ async def get_public(db: AsyncSession, slug: str, storage: Storage) -> PublicInv
         slug=invitation.slug,
         template_key=invitation.template_key,
         content=invitation.content,
-        event_date=invitation.event_date,
         published_at=invitation.published_at,
         updated_at=invitation.updated_at,
         albums=[PublicAlbum(id=a.id, title=a.title, position=a.position) for a in albums],
