@@ -35,6 +35,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 - Test dựng schema bằng `alembic upgrade head` (không còn `create_all`); `env.py` nhận connection truyền vào, bật `compare_server_default`.
 - Sửa tối thiểu code cũ cho test qua: bỏ `event_date` khỏi API thiệp; `TemplateOut.manifest`, seed ghi dữ liệu cũ vào `manifest`; `create_upload` ghi `kind = image`.
 - Kiểm tra trên DB tạm (đã xoá): upgrade, downgrade về base, upgrade lại, seed 2 lần; `revision --autogenerate` chỉ sinh `pass`.
+- DB dev `thiepcuoi` đã dựng lại theo migration mới (người dùng chạy), seed 4 mẫu; `alembic check` sạch.
 
 ## Quyết định mới
 
@@ -51,7 +52,6 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 
 ## Việc còn treo
 
-- DB dev `thiepcuoi` còn schema cũ ở revision `0001` (chỉ có 4 mẫu seed): `alembic upgrade head` không làm gì. Cần dựng lại: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` rồi upgrade và seed. Lệnh xoá bị chặn khi Claude chạy, chờ người dùng.
 - Spec còn trỏ tới `docs/spec-v1.md` (01 › Mục đích và cách dùng; 06 › Mẫu câu giao việc). Chờ quyết định có sửa spec không.
 - Schema request của auth (`RegisterRequest`, `LoginRequest`) chưa chuyển sang `StrictModel`/`SingleLine`, và kế hoạch không có bước nào cho auth. Chờ quyết định làm ở bước nào.
 - Bản xuất spec mất định dạng: bảng bị trải mỗi ô một dòng; mất sơ đồ quan hệ bảng (03 › "Mũi tên đi từ…") và link "(nguồn)" ở 04 › Ngày âm lịch.
