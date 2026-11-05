@@ -30,21 +30,19 @@ Mỗi file `docs/modules/<tên>.md` mô tả code **đã viết** của một mo
 - <điểm dễ sai, giới hạn hiện tại, việc còn dở>
 ```
 
-## Module dự kiến (theo `docs/spec/06-ke-hoach.md`)
+## Danh sách module (chốt ở Bước 0 theo cấu trúc `app/` của khung)
 
-Chưa có code. Tên module chốt lại khi đã thấy cấu trúc `app/` của khung ở Bước 0.
+Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi module có file khi bước đầu tiên làm tới nó. Module nằm trong `app/modules/<tên>/` gồm `models.py`, `schemas.py`, `service.py`, `router.py`.
 
-| Module | Phạm vi dự kiến | Bước | File module |
-| --- | --- | --- | --- |
-| core | `app/core/types.py` (một dòng, nhiều dòng, chuỗi chữ số, giờ HH:MM, múi giờ), base model strict, handler lỗi chung, naming convention trong `app/core/db.py` | 1, 2 | chưa có |
-| auth | users, refresh_tokens, endpoint auth (giữ từ khung) | 0, 2 | chưa có |
-| templates | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | chưa có |
-| invitations | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish | 2, 4, 6 | chưa có |
-| events | Bảng events, CRUD, tên mặc định, thứ tự, giới hạn 10 | 2, 5 | chưa có |
-| media | Bảng media, `kind` image/audio, upload-url, giới hạn theo loại, xoá file thì dọn tham chiếu | 2, 7 | chưa có |
-| albums | Bảng albums, endpoint album (giữ từ khung) | 0, 2 | chưa có |
-| banks | File tĩnh danh sách ngân hàng, `GET /banks`, kiểm tra gifts | 8 | chưa có |
-| lunar | `app/core/lunar.py`, lịch Việt Nam UTC+7 | 9 | chưa có |
-| public | `GET /public/invitations/{slug}`, lọc theo side, display_name, lunar_date, media_by_id | 10 | chưa có |
+| Module | Code | Phạm vi | Bước | File module |
+| --- | --- | --- | --- | --- |
+| core | `app/core/` (config, db, security, deps, errors, storage, revalidate) | Dự kiến thêm `types.py` (một dòng, nhiều dòng, chuỗi chữ số, giờ HH:MM, múi giờ), base model strict, handler lỗi chung; naming convention trong `db.py` | 1, 2 | chưa có |
+| auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (giữ từ khung) | 2 | chưa có |
+| templates | `app/modules/templates/`, `app/scripts/seed_templates.py` | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | chưa có |
+| invitations | `app/modules/invitations/` (có `public_router`, `slugs.py`) | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish; trang public `GET /public/invitations/{slug}` (lọc side, display_name, lunar_date, media_by_id) | 2, 4, 6, 10 | chưa có |
+| events | chưa có (module mới) | Bảng events, CRUD, tên mặc định, thứ tự, giới hạn 10 | 2, 5 | chưa có |
+| media | `app/modules/media/`, `app/scripts/init_storage.py` | Bảng media và albums, upload-url, endpoint album; `kind` image/audio, giới hạn theo loại, xoá file thì dọn tham chiếu | 2, 7 | chưa có |
+| banks | chưa có (vị trí chốt ở Bước 8) | File tĩnh danh sách ngân hàng, `GET /banks`, kiểm tra gifts | 8 | chưa có |
+| lunar | chưa có (`app/core/lunar.py`) | Âm lịch Việt Nam UTC+7 | 9 | chưa có |
 
 Bước 11 (README, xoá code cũ) chạm tới mọi module: cập nhật các file module bị ảnh hưởng.

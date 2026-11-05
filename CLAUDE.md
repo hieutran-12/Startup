@@ -39,18 +39,22 @@ Backend v1 cho dịch vụ thiệp cưới online. Cặp đôi chọn template, 
 
 ## Lệnh thường dùng
 ```sh
-docker compose up -d                       # PostgreSQL
+cp .env.example .env                       # lần đầu
+docker compose up -d                       # PostgreSQL :5432, RustFS (S3) :9000
 uv sync                                    # cài dependency
-uv run pytest                              # test
-uv run ruff check .                        # lint
 uv run alembic upgrade head                # chạy migration
+uv run python -m app.scripts.seed_templates  # seed mẫu thiệp
+uv run python -m app.scripts.init_storage    # tạo bucket, CORS (lần đầu)
+uv run fastapi dev app/main.py             # chạy app: http://localhost:8000/docs
+uv run pytest                              # test (database thiepcuoi_test)
+uv run ruff check .                        # lint
 uv run alembic revision --autogenerate     # kiểm tra model khớp migration: không được sinh thay đổi
 ```
-Chạy app: chưa xác định, điền ở Bước 0 khi có khung code.
+Windows: `alembic.ini` chỉ dùng ký tự ASCII (Alembic đọc .ini bằng cp1252). Chạy script qua pipe thì đặt `PYTHONIOENCODING=utf-8`.
 
 ## Mục lục: tác vụ → file cần đọc
 Spec trong `docs/spec/`: 01-quyet-dinh · 02-nguyen-tac-va-quy-chuan · 03-mo-hinh-du-lieu · 04-nghiep-vu · 05-api · 06-ke-hoach · 07-ngoai-pham-vi.
-Module trong `docs/modules/<tên>.md`; chưa có file nghĩa là chưa có code (danh sách dự kiến: `docs/modules/README.md`).
+Module trong `docs/modules/<tên>.md` (danh sách và vị trí code: `docs/modules/README.md`). Chưa có file nghĩa là module chưa được bước nào làm tới: đọc code khung trực tiếp.
 
 | Tác vụ | Spec | Module |
 | --- | --- | --- |
@@ -66,10 +70,10 @@ Module trong `docs/modules/<tên>.md`; chưa có file nghĩa là chưa có code 
 | Publish | 04 › Publish | invitations |
 | Sự kiện | 03 › events; 04 › Sự kiện; 05 | events |
 | Media, upload, nhạc nền | 03 › invitations, media; 04 › Tham chiếu media; 05 | media |
-| Album | 03 › Bảng giữ nguyên | albums |
+| Album | 03 › Bảng giữ nguyên | media |
 | Ngân hàng, mừng cưới (gifts) | 03 › Nội dung thiệp; 05 (GET /banks) | banks |
 | Âm lịch | 04 › Ngày âm lịch; 07 › Nguồn | lunar |
-| Trang public, `?side=` | 05 › Response của trang public; 04 › Link theo bên | public |
+| Trang public, `?side=` | 05 › Response của trang public; 04 › Link theo bên | invitations |
 | Việc có vẻ nằm ngoài v1 | 07 (không làm, hỏi trước) | |
 
 ## Quy trình mọi tác vụ
