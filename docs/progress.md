@@ -8,7 +8,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | --- | --- | --- |
 | 0 | Chạy khung hiện tại | Xong 2026-11-05: 28/28 test qua, ruff sạch, `/docs` mở được; chỉ sửa `alembic.ini` |
 | 1 | Tầng chuẩn hóa, base model, lỗi 422 | Xong 2026-11-05, đã duyệt: 143/143 test qua (115 mới), ruff sạch; `docs/modules/core.md` |
-| 2 | Model và migration 0001 | Xong 2026-11-05, chờ duyệt: 195/195 test qua (52 mới), ruff sạch; `alembic check` sạch trên PG 16.15 |
+| 2 | Model và migration 0001 | Xong 2026-11-05, đã duyệt: 195/195 test qua (52 mới), ruff sạch; `alembic check` sạch trên PG 16.15 |
 | 3 | Manifest template, seed | Chưa bắt đầu |
 | 4 | Content v1, tạo/sửa thiệp, revision | Chưa bắt đầu |
 | 5 | Module events | Chưa bắt đầu |
