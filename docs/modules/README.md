@@ -36,7 +36,7 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 
 | Module | Code | Phạm vi | Bước | File module |
 | --- | --- | --- | --- | --- |
-| core | `app/core/` (config, db, security, deps, errors, storage, revalidate) | Dự kiến thêm `types.py` (một dòng, nhiều dòng, chuỗi chữ số, giờ HH:MM, múi giờ), base model strict, handler lỗi chung; naming convention trong `db.py` | 1, 2 | chưa có |
+| core | `app/core/` (config, db, security, deps, errors, schemas, types, storage, revalidate) | Kiểu chuẩn hóa `types.py`, `StrictModel`, định dạng lỗi chung (Bước 1); naming convention trong `db.py` | 1, 2 | [core.md](core.md) |
 | auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (giữ từ khung) | 2 | chưa có |
 | templates | `app/modules/templates/`, `app/scripts/seed_templates.py` | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | chưa có |
 | invitations | `app/modules/invitations/` (có `public_router`, `slugs.py`) | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish; trang public `GET /public/invitations/{slug}` (lọc side, display_name, lunar_date, media_by_id) | 2, 4, 6, 10 | chưa có |

@@ -33,6 +33,7 @@ Backend v1 cho dịch vụ thiệp cưới online. Cặp đôi chọn template, 
 - snake_case mọi nơi, trừ class (PascalCase), URL nhiều từ (kebab-case), biến môi trường (UPPER_SNAKE_CASE).
 - Bảng số nhiều; khóa ngoại `<danh từ số ít>_id`; constraint/index tiền tố `pk_ uq_ fk_ ck_ ix_` (naming convention trong `app/core/db.py`).
 - Schema Pydantic hậu tố `Create`/`Update`/`Response` (bỏ `Out`). Service là hàm trong `service.py` của module, không viết class.
+- Schema request kế thừa `StrictModel`; chuỗi, UUID, ngày, giờ, múi giờ, enum dùng kiểu trong `app/core/types.py` (lý do: `docs/modules/core.md`).
 - Endpoint: danh từ số nhiều; hành động không phải CRUD là `POST /<tài nguyên>/{id}/<động từ>`.
 - Enum, key template/palette/font, mã lỗi: snake_case chữ thường (`classic_01`). Slug thiệp là kebab-case.
 - Hậu tố: `_at` TIMESTAMPTZ, `_date` DATE, `_time` TIME, `_id` khóa, `_count` đếm, `_bytes` dung lượng, `_vnd` tiền; boolean bắt đầu `is_`/`has_`.
