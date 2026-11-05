@@ -1,0 +1,43 @@
+[project]
+name = "thiepcuoi-backend"
+version = "0.1.0"
+description = "Backend cho nền tảng thiệp cưới online: FastAPI + PostgreSQL + S3/R2"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic-settings>=2.7",
+    "email-validator>=2.2",
+    "pwdlib[argon2]>=0.2.1",
+    "pyjwt>=2.10",
+    "boto3>=1.35",
+    "httpx>=0.28",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC"]
+ignore = ["B008"]  # FastAPI dùng Depends() trong default argument
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
+known-first-party = ["app", "tests"]
