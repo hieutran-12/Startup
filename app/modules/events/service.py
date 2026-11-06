@@ -2,7 +2,8 @@
 
 Mọi thao tác ghi: khóa dòng thiệp (`SELECT … FOR UPDATE`), kiểm tra If-Match với revision của
 thiệp, ghi sự kiện rồi tăng revision của thiệp. Khóa này cũng giữ giới hạn 10 sự kiện khi có
-request đồng thời. Thứ tự kiểm tra: xem docs/modules/events.md.
+request đồng thời. Thiệp đã publish: flush thay đổi rồi kiểm tra điều kiện publish trên trạng thái
+mới trước khi commit (spec 04 › Publish). Thứ tự kiểm tra: xem docs/modules/events.md.
 """
 
 import uuid
@@ -18,7 +19,7 @@ from app.core.config import settings
 from app.core.errors import bad_request, error_details, not_found, validation_error
 from app.core.revision import check_revision
 from app.modules.auth.models import User
-from app.modules.events.models import Event, EventType, HostSide
+from app.modules.events.models import Event, EventType, HostSide, display_order
 from app.modules.events.schemas import EVENT_FIELDS, EventCreate, EventResponse, EventUpdate
 from app.modules.invitations import service as invitation_service
 from app.modules.invitations.models import Invitation
@@ -79,17 +80,6 @@ def to_response(event: Event) -> EventResponse:
 # ---------- Đọc ----------
 
 
-def display_order() -> tuple[Any, ...]:
-    """Ngày, rồi giờ bắt đầu, rồi position; chưa có ngày (hoặc chưa có giờ trong ngày) xếp cuối."""
-    return (
-        Event.event_date.asc().nulls_last(),
-        Event.start_time.asc().nulls_last(),
-        Event.position,
-        Event.created_at,
-        Event.id,
-    )
-
-
 async def list_for_invitation(
     db: AsyncSession, owner: User, invitation_id: uuid.UUID
 ) -> tuple[Invitation, list[Event]]:
@@ -128,6 +118,15 @@ def _column_values(data: EventCreate) -> dict[str, Any]:
     }
 
 
+async def _commit(db: AsyncSession, invitation: Invitation) -> None:
+    """Thiệp đã publish phải còn đủ điều kiện publish sau thay đổi: flush để đọc danh sách sự kiện
+    mới theo thứ tự hiển thị; không đạt thì rollback, 400 `breaks_published_invitation`."""
+    if invitation.is_published:
+        await db.flush()
+        await invitation_service.check_still_publishable(db, invitation)
+    await db.commit()
+
+
 async def create(
     db: AsyncSession, owner: User, invitation_id: uuid.UUID, data: EventCreate, if_match: str
 ) -> tuple[Invitation, Event]:
@@ -145,7 +144,7 @@ async def create(
     event = Event(invitation_id=invitation.id, position=count, **_column_values(data))
     db.add(event)
     invitation.revision += 1
-    await db.commit()
+    await _commit(db, invitation)
     return invitation, event
 
 
@@ -181,7 +180,7 @@ async def update(
     for field, value in changes.items():
         setattr(event, field, value)
     invitation.revision += 1
-    await db.commit()
+    await _commit(db, invitation)
     return invitation, event, True
 
 
@@ -205,5 +204,5 @@ async def delete(
     )
     _renumber(list(remaining))
     invitation.revision += 1
-    await db.commit()
+    await _commit(db, invitation)
     return invitation

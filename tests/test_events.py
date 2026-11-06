@@ -875,10 +875,14 @@ async def test_event_writes_revalidate_published_invitation(
     assert calls == []
 
     inv = await _invitation(client, auth, content=NAMES, slug="nam-lan")
+    await _post_ok(client, auth, inv, FULL_EVENT)
+    assert calls == []  # thiệp còn nháp: không revalidate
     published = await client.post(f"/invitations/{inv['id']}/publish", headers=auth)
     assert published.status_code == 200, published.text
+    assert calls == []  # webhook của publish gửi từ router thiệp, không phải router này
 
-    event = await _post_ok(client, auth, inv, RECEPTION)
+    # Thiệp đã publish: sự kiện mới phải đủ ngày, giờ, địa chỉ (tests/test_publish.py)
+    event = await _post_ok(client, auth, inv, FULL_EVENT)
     await _patch_ok(client, auth, inv, event, {"venue_name": "Nhà hàng ABC"})
     await _patch_ok(client, auth, inv, event, {"venue_name": "Nhà hàng ABC"})  # không đổi gì
     await _delete(client, auth, inv, event)

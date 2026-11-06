@@ -10,7 +10,7 @@ import asyncio
 import copy
 import json
 import uuid
-from datetime import date
+from datetime import date, time
 from typing import Any
 
 from httpx import AsyncClient, Response
@@ -128,6 +128,22 @@ async def _add_media(
 async def _set_media_status(session_maker: async_sessionmaker, media_id: str, status: str) -> None:
     async with session_maker() as db:
         await db.execute(update(Media).where(Media.id == uuid.UUID(media_id)).values(status=status))
+        await db.commit()
+
+
+async def _add_ready_event(session_maker: async_sessionmaker, invitation_id: str) -> None:
+    """Ghi thẳng một sự kiện đủ điều kiện publish vào DB (không tăng revision của thiệp)."""
+    async with session_maker() as db:
+        db.add(
+            Event(
+                invitation_id=uuid.UUID(invitation_id),
+                event_type="reception",
+                host_side="both",
+                event_date=date(2026, 12, 20),
+                start_time=time(11, 0),
+                address="Nhà hàng ABC, Hà Nội",
+            )
+        )
         await db.commit()
 
 
@@ -341,8 +357,11 @@ async def test_concurrent_creates_do_not_exceed_limit(client: AsyncClient, templ
 # ---------- ETag, If-Match ----------
 
 
-async def test_single_invitation_responses_have_etag(client: AsyncClient, templates, auth) -> None:
+async def test_single_invitation_responses_have_etag(
+    client: AsyncClient, templates, auth, session_maker
+) -> None:
     inv = await _create(client, auth, content=NAMES)
+    await _add_ready_event(session_maker, inv["id"])
     url = f"/invitations/{inv['id']}"
     assert (await client.get(url, headers=auth)).headers["etag"] == '"1"'
 
@@ -885,15 +904,22 @@ async def test_other_user_cannot_access(client: AsyncClient, templates, auth, ot
     assert len((await client.get("/invitations", headers=auth)).json()) == 1
 
 
-async def test_publish_flow_and_public_page(client: AsyncClient, templates, auth) -> None:
-    # Điều kiện publish đầy đủ thuộc Bước 6; Bước 4 chỉ đổi sang full_name của content v1
+async def test_publish_flow_and_public_page(
+    client: AsyncClient, templates, auth, session_maker
+) -> None:
+    # Từng điều kiện publish: tests/test_publish.py. display_name không thay được full_name
     display_only = {"couple": {"groom": {"display_name": "Nam"}, "bride": {"display_name": "Lan"}}}
     empty = await _create(client, auth, content=display_only, slug="thiep-trong")
+    await _add_ready_event(session_maker, empty["id"])
     resp = await client.post(f"/invitations/{empty['id']}/publish", headers=auth)
-    assert resp.status_code == 400
-    assert _error_code(resp) == "missing_couple_names"
+    assert _details(resp, 400) == [
+        ("content.couple.groom.full_name", "required"),
+        ("content.couple.bride.full_name", "required"),
+    ]
+    assert _error_code(resp) == "not_ready_to_publish"
 
     inv = await _create(client, auth, content=NAMES)
+    await _add_ready_event(session_maker, inv["id"])
     assert (await client.get("/public/invitations/nam-lan")).status_code == 404
 
     published = await client.post(f"/invitations/{inv['id']}/publish", headers=auth)

@@ -21,7 +21,7 @@ from app.core.merge_patch import merge_patch
 from app.core.revision import check_revision
 from app.core.storage import Storage
 from app.modules.auth.models import User
-from app.modules.events.models import Event
+from app.modules.events.models import Event, display_order
 from app.modules.invitations.models import (
     MEDIA_REFERENCE_COLUMNS,
     Invitation,
@@ -43,7 +43,7 @@ from app.modules.invitations.slugs import slug_error, slugify, with_random_suffi
 from app.modules.media.models import Album, Media, MediaKind, MediaStatus
 from app.modules.templates import service as template_service
 from app.modules.templates.models import Template
-from app.modules.templates.schemas import TemplateManifest
+from app.modules.templates.schemas import SectionKey, TemplateManifest
 
 # Loại file mỗi cột *_media_id nhận (spec 04 › Tham chiếu media)
 MEDIA_COLUMN_KINDS = {
@@ -251,6 +251,81 @@ async def _media_reference_errors(
     return errors
 
 
+# ---------- Điều kiện publish (spec 04 › Publish) ----------
+
+_REQUIRED_NAMES = {
+    "groom": "Cần nhập họ tên chú rể",
+    "bride": "Cần nhập họ tên cô dâu",
+}
+_REQUIRED_EVENT_FIELDS = {
+    "event_date": "Cần nhập ngày tổ chức",
+    "start_time": "Cần nhập giờ bắt đầu",
+    "address": "Cần nhập địa chỉ",
+}
+_REQUIRED_SECTIONS = {
+    SectionKey.COVER: "Cần hiển thị phần ảnh bìa (cover)",
+    SectionKey.EVENTS: "Cần hiển thị phần sự kiện (events)",
+}
+
+
+def _missing(field: str, message: str) -> ErrorDetail:
+    return {"field": field, "code": "required", "message": message}
+
+
+def publish_errors(content: InvitationContent, events: Sequence[Event]) -> list[ErrorDetail]:
+    """Các điều kiện publish còn thiếu, theo thứ tự spec liệt kê; rỗng là đủ điều kiện.
+
+    `events` theo thứ tự hiển thị, nên `events[i]` khớp vị trí trong GET .../events.
+    """
+    errors = [
+        _missing(f"content.couple.{side}.full_name", message)
+        for side, message in _REQUIRED_NAMES.items()
+        if not getattr(content.couple, side).full_name
+    ]
+    if not events:
+        errors.append(_missing("events", "Cần có ít nhất một sự kiện"))
+    errors += [
+        _missing(f"events[{index}].{field}", message)
+        for index, event in enumerate(events)
+        for field, message in _REQUIRED_EVENT_FIELDS.items()
+        if getattr(event, field) is None
+    ]
+    errors += [
+        _missing("content.appearance.sections", message)
+        for section, message in _REQUIRED_SECTIONS.items()
+        if section not in content.appearance.sections
+    ]
+    return errors
+
+
+async def _events_in_display_order(db: AsyncSession, invitation_id: uuid.UUID) -> list[Event]:
+    stmt = select(Event).where(Event.invitation_id == invitation_id).order_by(*display_order())
+    return list(await db.scalars(stmt))
+
+
+async def check_still_publishable(
+    db: AsyncSession, invitation: Invitation, content: InvitationContent | None = None
+) -> None:
+    """Thiệp đã publish phải còn đủ điều kiện publish sau mỗi lần sửa.
+
+    Gọi ngay trước commit, khi thiệp đã bị khóa (`FOR UPDATE`) và thay đổi sự kiện đã được flush.
+    `content`: content mới (PATCH thiệp); không truyền thì dùng content đã lưu. Không đạt thì
+    rollback mọi thay đổi chưa commit rồi trả 400 `breaks_published_invitation`.
+    """
+    if not invitation.is_published:
+        return
+    if content is None:
+        content = InvitationContent.model_validate(invitation.content)
+    errors = publish_errors(content, await _events_in_display_order(db, invitation.id))
+    if errors:
+        await db.rollback()
+        raise bad_request(
+            "breaks_published_invitation",
+            "Thiệp đang đăng phải giữ đủ thông tin bắt buộc",
+            details=errors,
+        )
+
+
 # ---------- Ghi ----------
 
 
@@ -335,6 +410,7 @@ async def update(
     # Đổi template: chỉnh appearance đã lưu theo manifest mới trước, rồi mới gộp patch; giá trị
     # client gửi tường minh vẫn được kiểm tra chặt theo manifest mới.
     new_content = invitation.content
+    parsed_content: InvitationContent | None = None  # None: content giữ nguyên
     errors: list[ErrorDetail] = []
     if template_changed or "content" in fields:
         content_data = dict(invitation.content)
@@ -344,6 +420,7 @@ async def update(
             content_data = merge_patch(content_data, data.content)
         content, errors = _parse_content(content_data, manifest)
         if content is not None:
+            parsed_content = content
             new_content = content.model_dump(mode="json")
             # Chỉ kiểm tra tham chiếu có trong request: gửi love_story thì kiểm tra cả danh sách
             if "content" in fields and "love_story" in data.content:
@@ -385,6 +462,7 @@ async def update(
     if not changed:
         return invitation, []
 
+    await check_still_publishable(db, invitation, parsed_content)
     invitation.revision += 1
     try:
         await db.commit()
@@ -401,11 +479,17 @@ async def update(
 
 
 async def publish(db: AsyncSession, owner: User, invitation_id: uuid.UUID) -> Invitation:
-    """Bước 4 chỉ đổi sang full_name của content v1; điều kiện publish đầy đủ ở Bước 6."""
+    """Đủ điều kiện publish thì đăng, thiếu thì 400 `not_ready_to_publish` (spec 04 › Publish).
+
+    Khóa dòng thiệp trước khi đọc sự kiện: thao tác ghi sự kiện cũng khóa dòng này, nên không xoá
+    được sự kiện giữa lúc kiểm tra và lúc đăng. Không cần If-Match, không tăng revision; publish
+    lại thiệp đã đăng thì kiểm tra lại và đặt lại `published_at` (giữ như khung).
+    """
     invitation = await get_owned(db, owner, invitation_id, for_update=True)
-    couple = InvitationContent.model_validate(invitation.content).couple
-    if not (couple.groom.full_name and couple.bride.full_name):
-        raise bad_request("missing_couple_names", "Cần nhập tên cô dâu và chú rể trước khi đăng")
+    content = InvitationContent.model_validate(invitation.content)
+    errors = publish_errors(content, await _events_in_display_order(db, invitation.id))
+    if errors:
+        raise bad_request("not_ready_to_publish", "Thiệp chưa đủ thông tin để đăng", details=errors)
     invitation.status = InvitationStatus.PUBLISHED.value
     invitation.published_at = datetime.now(UTC)
     await db.commit()

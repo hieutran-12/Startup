@@ -81,7 +81,21 @@ async def test_full_upload_flow(client: AsyncClient, templates, auth, fake_stora
     )
     assert again.status_code == 200
 
-    await client.post(f"/invitations/{inv['id']}/publish", headers=auth)
+    # Upload ảnh không đổi revision; publish cần một sự kiện đủ ngày, giờ, địa chỉ
+    event = await client.post(
+        f"/invitations/{inv['id']}/events",
+        json={
+            "event_type": "reception",
+            "host_side": "both",
+            "event_date": "2026-12-20",
+            "start_time": "11:00",
+            "address": "Nhà hàng ABC, Hà Nội",
+        },
+        headers={**auth, "If-Match": f'"{inv["revision"]}"'},
+    )
+    assert event.status_code == 201, event.text
+    published = await client.post(f"/invitations/{inv['id']}/publish", headers=auth)
+    assert published.status_code == 200, published.text
     public = (await client.get(f"/public/invitations/{inv['slug']}")).json()
     assert public["albums"][0]["title"] == "Pre-wedding"
     assert public["media"][0]["url"] == media["url"]

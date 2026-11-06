@@ -2,6 +2,7 @@ import uuid
 from datetime import date, time
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Index, Integer, Numeric, String, text
 from sqlalchemy.dialects.postgresql import TIME
@@ -74,3 +75,18 @@ class Event(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Link mở app chỉ đường; không parse lấy tọa độ từ link này
     maps_url: Mapped[str | None] = mapped_column(String(2048))
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+
+
+def display_order() -> tuple[Any, ...]:
+    """Thứ tự hiển thị (spec 04 › Sự kiện): ngày, rồi giờ bắt đầu, rồi position; chưa có ngày
+    (hoặc chưa có giờ trong ngày) xếp cuối.
+
+    Đặt ở models để invitations (điều kiện publish) dùng được mà không import events.service.
+    """
+    return (
+        Event.event_date.asc().nulls_last(),
+        Event.start_time.asc().nulls_last(),
+        Event.position,
+        Event.created_at,
+        Event.id,
+    )
