@@ -11,7 +11,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 2 | Model và migration 0001 | Xong 2026-11-05, đã duyệt: 195/195 test qua (52 mới), ruff sạch; `alembic check` sạch trên PG 16.15 |
 | 3 | Manifest template, seed | Xong 2026-11-06, đã duyệt: 275/275 test qua (80 mới), ruff sạch; `docs/modules/templates.md` |
 | 4 | Content v1, tạo/sửa thiệp, revision | Xong 2026-11-06, đã duyệt: 408/408 test qua (133 mới), ruff sạch; `docs/modules/invitations.md`, `core.md` |
-| 5 | Module events | Xong 2026-11-06, chờ nghiệm thu: 543/543 test qua (135 mới), ruff sạch; `docs/modules/events.md`, `core.md` |
+| 5 | Module events | Xong 2026-11-06, đã duyệt: 543/543 test qua (135 mới), ruff sạch; `docs/modules/events.md`, `core.md` |
 | 6 | Publish, breaks_published_invitation | Chưa bắt đầu |
 | 7 | Media: kind, âm thanh, dọn tham chiếu | Chưa bắt đầu |
 | 8 | Danh sách ngân hàng, GET /banks | Chưa bắt đầu |
