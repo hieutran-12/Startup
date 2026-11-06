@@ -48,6 +48,7 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `string_too_short`, `too_short`, `greater_than*`, `less_than*` → `out_of_range` (đã chốt: spec không có `too_short`)
 - `enum`, `literal_error` → `invalid_choice`; mọi loại khác (sai kiểu, JSON hỏng, `value_error`) → `invalid_format`
 - `field`: `content.love_story[0].title`; lỗi không gắn với trường (JSON hỏng, body không phải object, thiếu body) → `""`
+- Lỗi tham chiếu chéo trong `model_validator`: raise `ValidationError.from_exception_data(...)` với `InitErrorDetails(loc=...)` thì Pydantic giữ `loc` của từng lỗi và nối tiền tố bên ngoài (`manifest.defaults.palette_key`). Ví dụ: `TemplateManifest` (`templates.md`)
 
 ## Lưu ý
 - FastAPI validate body ở chế độ Python: trong `StrictModel`, khai báo `uuid.UUID`, `date`, `time` hay Enum gốc sẽ từ chối mọi chuỗi. Luôn dùng `Uuid`, `IsoDate`, `LocalTime`, `Choice`.

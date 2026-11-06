@@ -19,7 +19,7 @@ CONTENT = {
 
 
 async def _create(client: AsyncClient, auth: dict, **overrides) -> dict:
-    payload = {"template_key": "classic-01", "content": CONTENT, **overrides}
+    payload = {"template_key": "classic_01", "content": CONTENT, **overrides}
     resp = await client.post("/invitations", json=payload, headers=auth)
     assert resp.status_code == 201, resp.text
     return resp.json()
@@ -29,11 +29,11 @@ async def test_list_templates_hides_inactive(client: AsyncClient, templates) -> 
     resp = await client.get("/templates")
     assert resp.status_code == 200
     keys = {t["key"] for t in resp.json()}
-    assert keys == {"classic-01", "minimal-01", "vintage-01"}
+    assert keys == {"classic_01", "minimal_01", "vintage_01"}
 
-    assert (await client.get("/templates/old-01")).status_code == 404
+    assert (await client.get("/templates/old_01")).status_code == 404
     classic = await client.get("/templates?category=classic")
-    assert [t["key"] for t in classic.json()] == ["classic-01"]
+    assert [t["key"] for t in classic.json()] == ["classic_01"]
 
 
 async def test_create_generates_slug_and_title(
@@ -43,7 +43,7 @@ async def test_create_generates_slug_and_title(
     assert first["slug"] == "nam-lan"
     assert first["title"] == "Nam & Lan"
     assert first["status"] == "draft"
-    assert first["template_key"] == "classic-01"
+    assert first["template_key"] == "classic_01"
     assert first["content"]["custom_field_of_template"] == {"anything": True}
 
     second = await _create(client, auth)
@@ -57,7 +57,7 @@ async def test_create_with_custom_slug(client: AsyncClient, templates, auth, oth
 
     taken = await client.post(
         "/invitations",
-        json={"template_key": "classic-01", "slug": "nam-lan-2026"},
+        json={"template_key": "classic_01", "slug": "nam-lan-2026"},
         headers=other_auth,
     )
     assert taken.status_code == 409
@@ -65,7 +65,7 @@ async def test_create_with_custom_slug(client: AsyncClient, templates, auth, oth
 
     for bad in ["dashboard", "có-dấu", "a", "nam--lan"]:
         resp = await client.post(
-            "/invitations", json={"template_key": "classic-01", "slug": bad}, headers=auth
+            "/invitations", json={"template_key": "classic_01", "slug": bad}, headers=auth
         )
         assert resp.status_code == 422, bad
 
@@ -87,7 +87,7 @@ async def test_slug_availability(client: AsyncClient, templates, auth) -> None:
 async def test_create_rejects_premium_and_unknown_template(
     client: AsyncClient, templates, auth
 ) -> None:
-    premium = await client.post("/invitations", json={"template_key": "vintage-01"}, headers=auth)
+    premium = await client.post("/invitations", json={"template_key": "vintage_01"}, headers=auth)
     assert premium.status_code == 400
     assert premium.json()["error"]["code"] == "template_premium"
 
@@ -100,7 +100,7 @@ async def test_invitation_limit(client: AsyncClient, templates, auth, monkeypatc
 
     monkeypatch.setattr(settings, "max_invitations_per_user", 1)
     await _create(client, auth)
-    resp = await client.post("/invitations", json={"template_key": "classic-01"}, headers=auth)
+    resp = await client.post("/invitations", json={"template_key": "classic_01"}, headers=auth)
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "invitation_limit"
 
@@ -111,18 +111,18 @@ async def test_update_invitation(client: AsyncClient, templates, auth) -> None:
 
     resp = await client.patch(
         f"/invitations/{inv['id']}",
-        json={"template_key": "minimal-01", "slug": "nam-va-lan", "content": new_content},
+        json={"template_key": "minimal_01", "slug": "nam-va-lan", "content": new_content},
         headers=auth,
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["template_key"] == "minimal-01"
+    assert body["template_key"] == "minimal_01"
     assert body["slug"] == "nam-va-lan"
     assert body["content"]["greeting"] == "Trân trọng kính mời"
     assert body["title"] == "Nam & Lan"  # không gửi thì giữ nguyên
 
     premium = await client.patch(
-        f"/invitations/{inv['id']}", json={"template_key": "vintage-01"}, headers=auth
+        f"/invitations/{inv['id']}", json={"template_key": "vintage_01"}, headers=auth
     )
     assert premium.status_code == 400
 
@@ -155,7 +155,7 @@ async def test_publish_flow_and_public_page(client: AsyncClient, templates, auth
     assert public.status_code == 200
     assert "s-maxage" in public.headers["cache-control"]
     body = public.json()
-    assert body["template_key"] == "classic-01"
+    assert body["template_key"] == "classic_01"
     assert body["content"]["couple"]["groom"]["short_name"] == "Nam"
     assert body["albums"] == [] and body["media"] == []
     assert "owner_id" not in body

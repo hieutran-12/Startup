@@ -9,7 +9,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 0 | Chạy khung hiện tại | Xong 2026-11-05: 28/28 test qua, ruff sạch, `/docs` mở được; chỉ sửa `alembic.ini` |
 | 1 | Tầng chuẩn hóa, base model, lỗi 422 | Xong 2026-11-05, đã duyệt: 143/143 test qua (115 mới), ruff sạch; `docs/modules/core.md` |
 | 2 | Model và migration 0001 | Xong 2026-11-05, đã duyệt: 195/195 test qua (52 mới), ruff sạch; `alembic check` sạch trên PG 16.15 |
-| 3 | Manifest template, seed | Chưa bắt đầu |
+| 3 | Manifest template, seed | Xong 2026-11-06, chờ nghiệm thu: 275/275 test qua (80 mới), ruff sạch; `docs/modules/templates.md` |
 | 4 | Content v1, tạo/sửa thiệp, revision | Chưa bắt đầu |
 | 5 | Module events | Chưa bắt đầu |
 | 6 | Publish, breaks_published_invitation | Chưa bắt đầu |
@@ -19,25 +19,21 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 10 | Response public mới | Chưa bắt đầu |
 | 11 | README, xoá code cũ | Chưa bắt đầu |
 
-## Đã xong ngoài kế hoạch, ghi chú Bước 0
+## Ghi chú Bước 0–2 (đã gộp; chi tiết trong `docs/modules/`)
 
-- 2026-11-05: Tách `docs/spec-v1.md` thành `docs/spec/01`–`07` (giữ nguyên chữ, CRLF → LF); tạo `CLAUDE.md`, `docs/modules/`, `docs/progress.md`. Commit đầu `83b3822` là khung nguyên trạng; `thiepcuoi-backend.zip` để ngoài git (`.git/info/exclude`).
-- Bước 0: lỗi duy nhất là Alembic đọc `alembic.ini` bằng cp1252 (đã viết chú thích không dấu). Script in tiếng Việt hỏng khi chạy qua pipe, không sửa code. Danh sách module: `docs/modules/README.md`.
+- 2026-11-05: Tách `docs/spec-v1.md` thành `docs/spec/01`–`07` (giữ nguyên chữ, CRLF → LF); tạo `CLAUDE.md`, `docs/modules/`, `docs/progress.md`. Commit đầu `83b3822` là khung nguyên trạng; `thiepcuoi-backend.zip` để ngoài git (`.git/info/exclude`). Bước 0 chỉ sửa `alembic.ini` (Alembic đọc bằng cp1252).
+- Bước 1: thêm `Uuid`, `IsoDate`, `Choice` (FastAPI validate ở chế độ Python, strict từ chối chuỗi), dependency `tzdata` (Windows), handler `StarletteHTTPException` (`core.md`).
+- Bước 2: test dựng schema bằng `alembic upgrade head`; sửa tối thiểu code cũ (bỏ `event_date` khỏi API thiệp, `create_upload` ghi `kind = image`); upgrade/downgrade đã thử trên DB tạm; DB dev dựng lại (người dùng chạy).
 
-## Ghi chú Bước 1
+## Ghi chú Bước 3
 
-- FastAPI 0.162 validate body ở chế độ Python: `strict=True` từ chối UUID, ngày, enum dạng chuỗi, nên `types.py` thêm `Uuid`, `IsoDate`, `Choice` (ngoài danh sách của bước, cần để bật strict).
-- Thêm dependency `tzdata`: Windows không có dữ liệu múi giờ, `zoneinfo.available_timezones()` trả rỗng.
-- Handler `StarletteHTTPException` (404 route lạ, 405) cũng trả dạng lỗi chung.
-
-## Ghi chú Bước 2
-
-- Test dựng schema bằng `alembic upgrade head` (không còn `create_all`); `env.py` nhận connection truyền vào, bật `compare_server_default`.
-- Sửa tối thiểu code cũ cho test qua: bỏ `event_date` khỏi API thiệp; `TemplateOut.manifest`, seed ghi dữ liệu cũ vào `manifest`; `create_upload` ghi `kind = image`.
-- Kiểm tra trên DB tạm (đã xoá): upgrade, downgrade về base, upgrade lại, seed 2 lần; `revision --autogenerate` chỉ sinh `pass`.
-- DB dev `thiepcuoi` đã dựng lại theo migration mới (người dùng chạy), seed 4 mẫu; `alembic check` sạch.
+- Không đổi model, migration. `TemplateOut` đổi tên thành `TemplateResponse`. Key test đổi sang snake_case (`classic_01`…).
+- DB dev: đã xoá 4 dòng key cũ (`classic-01`…, không có thiệp nào trỏ tới), seed mới chạy 2 lần; `alembic check` sạch.
+- Docker Desktop chưa chạy thì `uv run pytest` không báo lỗi ngay mà chạy rất lâu (mỗi test chờ kết nối): khởi động Docker Desktop, `docker compose up -d` trước.
 
 ## Quyết định mới
+
+- 2026-11-06 (Bước 3, người dùng duyệt theo đề xuất): quy tắc phụ của manifest và dòng seed (không trùng, tối thiểu 1 phần tử, dạng key, màu, mã lỗi trùng `invalid_format` / ngoài danh sách `invalid_choice`, `position` 0–3, dữ liệu seed nháp): xem `docs/modules/templates.md`. Bước 4 dùng cùng mã lỗi cho `appearance.sections`.
 
 - 2026-11-05 (Bước 2, người dùng duyệt theo đề xuất):
   - Giữ index của khung spec không nhắc tới (`ix_templates_category`, `ix_invitations_template_id`, `ix_albums_invitation_id`, `ix_media_album_id`, `ix_media_invitation_position`).

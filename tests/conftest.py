@@ -2,6 +2,7 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
@@ -96,17 +97,63 @@ def session_maker(db_engine: AsyncEngine) -> async_sessionmaker:
     return async_sessionmaker(db_engine, expire_on_commit=False, autoflush=False)
 
 
+def make_manifest(**overrides: Any) -> dict[str, Any]:
+    """Manifest hợp lệ, nhỏ gọn (schema TemplateManifest). Trả bản mới mỗi lần gọi."""
+    manifest: dict[str, Any] = {
+        "sections": ["cover", "greeting", "couple", "events", "gallery"],
+        "default_sections": ["cover", "couple", "events"],
+        "palettes": [
+            {
+                "key": "ivory_gold",
+                "name": "Ngà – vàng đồng",
+                "primary": "#B08D57",
+                "secondary": "#E8DCC4",
+                "background": "#FBF7EF",
+                "text": "#3A2E22",
+            },
+            {
+                "key": "burgundy",
+                "name": "Đỏ rượu vang",
+                "primary": "#A3485A",
+                "secondary": "#E9C9CF",
+                "background": "#FCF6F4",
+                "text": "#3B1F25",
+            },
+        ],
+        "fonts": [{"key": "playfair_display", "name": "Playfair Display"}],
+        "backgrounds": [{"key": "plain", "name": "Trơn"}, {"key": "paper", "name": "Giấy dó"}],
+        "defaults": {
+            "palette_key": "ivory_gold",
+            "font_key": "playfair_display",
+            "background_key": "plain",
+        },
+        "max_gallery_images": 30,
+    }
+    return {**manifest, **overrides}
+
+
 @pytest.fixture
 async def templates(session_maker: async_sessionmaker) -> dict[str, Template]:
-    # manifest rỗng cho tới Bước 3 (schema TemplateManifest)
     items = {
-        "classic-01": Template(key="classic-01", name="Cổ điển", category="classic", manifest={}),
-        "minimal-01": Template(key="minimal-01", name="Tối giản", category="minimal", manifest={}),
-        "vintage-01": Template(
-            key="vintage-01", name="Hoài cổ", category="vintage", is_premium=True, manifest={}
+        "classic_01": Template(
+            key="classic_01", name="Cổ điển", category="classic", manifest=make_manifest()
         ),
-        "old-01": Template(
-            key="old-01", name="Ngừng dùng", category="classic", is_active=False, manifest={}
+        "minimal_01": Template(
+            key="minimal_01", name="Tối giản", category="minimal", manifest=make_manifest()
+        ),
+        "vintage_01": Template(
+            key="vintage_01",
+            name="Hoài cổ",
+            category="vintage",
+            is_premium=True,
+            manifest=make_manifest(),
+        ),
+        "old_01": Template(
+            key="old_01",
+            name="Ngừng dùng",
+            category="classic",
+            is_active=False,
+            manifest=make_manifest(),
         ),
     }
     async with session_maker() as db:

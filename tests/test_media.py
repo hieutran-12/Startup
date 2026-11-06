@@ -7,7 +7,7 @@ CONTENT = {"couple": {"groom": {"short_name": "Hùng"}, "bride": {"short_name": 
 
 async def _invitation(client: AsyncClient, auth: dict) -> dict:
     resp = await client.post(
-        "/invitations", json={"template_key": "classic-01", "content": CONTENT}, headers=auth
+        "/invitations", json={"template_key": "classic_01", "content": CONTENT}, headers=auth
     )
     assert resp.status_code == 201, resp.text
     return resp.json()
