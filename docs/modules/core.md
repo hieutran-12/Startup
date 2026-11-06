@@ -5,6 +5,7 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
+- `app/core/lunar.py`: âm lịch Việt Nam (Bước 9), mô tả riêng ở `lunar.md`
 - `app/core/schemas.py`: `StrictModel` (Bước 1); `field_error`, `duplicate_errors` (Bước 4, chuyển từ templates)
 - `app/core/errors.py`: `AppError`, `error_details`, handler lỗi (sửa ở Bước 1, 4)
 - `app/core/merge_patch.py`, `app/core/revision.py`: Merge Patch, ETag/If-Match (Bước 4); `main.py` CORS `expose_headers=["ETag"]`

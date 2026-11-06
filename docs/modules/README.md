@@ -43,6 +43,6 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 | events | `app/modules/events/` | Bảng events, CRUD (`/invitations/{id}/events`), tên mặc định, thứ tự, giới hạn 10, If-Match; giữ điều kiện publish khi ghi | 2, 5, 6 | [events.md](events.md) |
 | media | `app/modules/media/`, `app/scripts/init_storage.py` | Bảng media và albums, upload-url (`kind` image/audio suy ra từ `content_type`), giới hạn theo loại, endpoint album; xoá file thì dọn tham chiếu của thiệp (gọi `invitations.service.release_media`) | 2, 7 | [media.md](media.md) |
 | banks | `app/modules/banks/` (`banks.json`, không có `models.py`) | File tĩnh danh sách ngân hàng, `GET /banks`; invitations gọi `is_known_bin` để kiểm tra `gifts[].bank_bin` | 8 | [banks.md](banks.md) |
-| lunar | chưa có (`app/core/lunar.py`) | Âm lịch Việt Nam UTC+7 | 9 | chưa có |
+| lunar | `app/core/lunar.py` | Âm lịch Việt Nam UTC+7: `to_lunar(date) -> LunarDate`, `year_name`; Bước 10 dùng cho `lunar_date` của sự kiện ở trang public | 9 | [lunar.md](lunar.md) |
 
 Bước 11 (README, xoá code cũ) chạm tới mọi module: cập nhật các file module bị ảnh hưởng.

@@ -15,11 +15,11 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 6 | Publish, breaks_published_invitation | Xong 2026-11-06, đã duyệt: 582/582 test qua (39 mới), ruff sạch; `docs/modules/invitations.md`, `events.md` |
 | 7 | Media: kind, âm thanh, dọn tham chiếu | Xong 2026-11-06, đã duyệt: 625/625 test qua (43 mới), ruff sạch; `docs/modules/media.md`, `invitations.md`, `core.md` |
 | 8 | Danh sách ngân hàng, GET /banks | Xong 2026-11-06, đã duyệt: 662/662 test qua (37 mới), ruff sạch; `docs/modules/banks.md`, `invitations.md` |
-| 9 | Âm lịch | Chưa bắt đầu |
+| 9 | Âm lịch | Xong 2026-11-06, chờ duyệt: 685/685 test qua (23 mới), ruff sạch; `docs/modules/lunar.md`, `core.md` |
 | 10 | Response public mới | Chưa bắt đầu |
 | 11 | README, xoá code cũ | Chưa bắt đầu |
 
-## Ghi chú Bước 0–7 (đã gộp; chi tiết trong `docs/modules/`)
+## Ghi chú Bước 0–8 (đã gộp; chi tiết trong `docs/modules/`)
 
 - 2026-11-05: Tách `docs/spec-v1.md` thành `docs/spec/01`–`07` (giữ nguyên chữ, CRLF → LF); tạo `CLAUDE.md`, `docs/modules/`, `docs/progress.md`. Commit đầu `83b3822` là khung nguyên trạng; `thiepcuoi-backend.zip` để ngoài git (`.git/info/exclude`). Bước 0 chỉ sửa `alembic.ini` (Alembic đọc bằng cp1252).
 - Bước 1: thêm `Uuid`, `IsoDate`, `Choice` (FastAPI validate ở chế độ Python, strict từ chối chuỗi), dependency `tzdata` (Windows), handler `StarletteHTTPException` (`core.md`).
@@ -29,15 +29,17 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 - Bước 5: thêm `Latitude`, `Longitude`, `HttpUrl` (core), `settings.max_events_per_invitation = 10`, router events trong `main.py`. Không đổi model, migration. Test đồng thời đã thử bỏ khóa `FOR UPDATE`: fail như mong đợi.
 - Bước 6: không đổi model, migration, endpoint; bỏ mã `missing_couple_names`; `display_order()` chuyển sang `events/models.py`. Test cũ publish thiệp được thêm sự kiện đủ ngày, giờ, địa chỉ. Thiệp đã publish trên DB dev mà chưa đủ điều kiện: mọi lần sửa sẽ 400 tới khi đủ, hoặc unpublish rồi sửa.
 - Bước 7: không đổi model, migration; spec 03 › media sửa theo yêu cầu (nhận `audio/mp3`, `audio/x-m4a`). Env đổi sang `MAX_IMAGE_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGES_PER_INVITATION`, `MAX_AUDIO_PER_INVITATION` (`.env` cũ còn tên cũ thì dùng mặc định). FE: bỏ mã `unsupported_file_type`, `file_too_large` (thành 422); `DELETE /media/{id}` trả `ETag`; `GET /media` có file âm thanh.
+- Bước 8: không đổi model, migration, spec; module mới `app/modules/banks/` (`banks.json` 76 dòng từ VietQR, cách tạo lại ở `banks.md`). FE: `GET /banks` không cần đăng nhập; BIN lạ → 422 `invalid_choice` tại `content.gifts[i].bank_bin`; thiệp đã lưu BIN lạ thì lần sửa content kế tiếp bị 422 tới khi sửa gift.
 
-## Ghi chú Bước 8
+## Ghi chú Bước 9
 
-- Không đổi model, migration, spec. Module mới `app/modules/banks/` (`banks.json` 76 dòng từ `api.vietqr.io/v2/banks` ngày 2026-11-06, chuẩn hóa 8 tên); router đăng ký trong `main.py`. Cách tạo lại file: `banks.md`.
-- FE cần biết: `GET /banks` không cần đăng nhập; BIN lạ → 422 `invalid_choice` tại `content.gifts[i].bank_bin`. Thiệp nào trên DB dev đã lưu BIN không có trong danh sách thì lần sửa content kế tiếp bị 422 tới khi sửa gift.
-- Test mới: `tests/test_banks.py`; thêm 2 test schema ở `tests/test_invitation_content.py`.
+- Không đổi model, migration, spec, endpoint, dependency. Chỉ thêm `app/core/lunar.py` và `tests/test_lunar.py`; chưa nơi nào gọi (Bước 10).
+- 15 ngày đối chiếu khớp cả xemlicham.com và lichvannien365.com (tháng nhuận 2025, 2020 xác nhận gián tiếp ở trang thứ hai). Đổi sang UTC+8 thì ra Tết Trung Quốc: test phân biệt được.
+- So với bản gốc của thuật toán trên 1800–2199: khác 4 ngày, bản gốc trả ngày 0 (lỗi ước lượng), bản này trả ngày 30 (`lunar.md` › Cài đặt).
 
 ## Quyết định mới
 
+- 2026-11-06 (Bước 9, người dùng duyệt 7 đề xuất): tự cài đặt thuật toán Hồ Ngọc Đức, không dependency; `to_lunar(date) -> LunarDate` (frozen dataclass 5 trường), tháng nhuận mang số tháng lặp lại; can chi viết "Tỵ", "Kỷ", "Mão"; tính cho mọi `date`, không raise, không null; UTC+7 cho mọi năm. Chi tiết: `docs/modules/lunar.md`.
 - 2026-11-06 (Bước 8, người dùng duyệt 9 đề xuất): đủ 76 mục VietQR, không lọc `transferSupported`; chỉ `bin`, `short_name`, `name`, đã chuẩn hóa, giữ thứ tự nguồn; file sai thì app không khởi động; `GET /banks` không cần đăng nhập, không tham số; BIN lạ → 422 `invalid_choice`; kiểm tra mỗi lần content được kiểm tra theo request, không kiểm tra khi đọc; số tài khoản giữ quy tắc Bước 4; không có script tải lại. Chi tiết: `docs/modules/banks.md`.
 - 2026-11-06 (Bước 7, người dùng duyệt 9 đề xuất, thêm yêu cầu nhận `audio/mp3`, `audio/x-m4a`: đã sửa spec 03 trước): giới hạn đếm theo `kind` gồm cả pending, khóa dòng thiệp; lỗi gắn trường → 422 (`invalid_choice`, `out_of_range`, `invalid_reference`), vượt số lượng → 400 `media_limit`; âm thanh không album, không kích thước; `MediaResponse.kind`; thứ tự chỉ cho ảnh; xoá file khóa dòng thiệp, không If-Match, 204 có `ETag`; schema media + album sang `StrictModel`, `*Out` → `*Response`; settings theo loại; public dạng khung chỉ trả ảnh. Chi tiết: `docs/modules/media.md`.
 - 2026-11-06 (Bước 6, người dùng duyệt 8 đề xuất): details mã `required`, `events[i]` theo thứ tự hiển thị sau khi sửa, `content.appearance.sections` mỗi section thiếu một dòng; `breaks_published_invitation` liệt kê mọi điều kiện không đạt; kiểm tra sau 422, 409 slug, 400 `event_limit`; áp dụng cho PATCH thiệp và ghi sự kiện; đổi template mất `cover`/`events` trên thiệp đã publish → 400; publish lại giữ như khung. Chi tiết: `docs/modules/invitations.md`.
@@ -45,11 +47,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 - 2026-11-06 (Bước 4, người dùng duyệt 9 đề xuất): POST nhận content dạng Merge Patch; null cho nhóm object → `required`; lỗi manifest/tham chiếu media → 422; 409 trả revision qua `ETag`, If-Match chỉ khớp đúng `"<revision>"`; revision chỉ tăng khi có thay đổi; đổi template: chỉnh rồi gộp rồi kiểm tra chặt; month không year → lỗi tại `year`; `primary_event_date` làm ngay. Chốt khi nghiệm thu: slug rỗng lúc tạo thì tự sinh; key giao diện khớp nguyên văn; publish không cần If-Match, không tăng revision. Chi tiết: `docs/modules/invitations.md`.
 - 2026-11-06 (Bước 3, người dùng duyệt theo đề xuất): quy tắc phụ của manifest và dòng seed (không trùng, tối thiểu 1 phần tử, dạng key, màu, mã lỗi trùng `invalid_format` / ngoài danh sách `invalid_choice`, `position` 0–3, dữ liệu seed nháp): xem `docs/modules/templates.md`. Bước 4 dùng cùng mã lỗi cho `appearance.sections`.
 - 2026-11-05 (Bước 2, người dùng duyệt theo đề xuất): giữ index của khung spec không nhắc tới (`ix_templates_category`, `ix_invitations_template_id`, `ix_albums_invitation_id`, `ix_media_album_id`, `ix_media_invitation_position`); không thêm CHECK/DEFAULT ngoài spec (không CHECK snake_case cho `templates.key`, `revision > 0`, `position >= 0`, `size_bytes > 0`; không unique index "1 file âm thanh"; `media.kind` không DEFAULT). Tên constraint: `docs/modules/{invitations,media,events,templates}.md`.
-- 2026-11-05 (Bước 1, người dùng duyệt theo đề xuất):
-  - Ngắn hơn tối thiểu → `out_of_range` (không thêm `too_short`). Ký tự điều khiển: văn bản một dòng chặn mọi Cc (kể cả tab); nhiều dòng chỉ cho `\n`, `\t`. U+2028/U+2029 bị chặn ở cả hai.
-  - Lỗi không gắn với trường → `field: ""`. Schema cũ chuyển sang `StrictModel` theo bước của từng module.
-  - Mặc định: null/thiếu → `required`; sai kiểu → `invalid_format`; `Digits` sai → `invalid_format`; giờ/ngày/UUID không trim; UUID chỉ nhận chữ thường.
-  - Chốt khi nghiệm thu: múi giờ sai (phân biệt hoa thường) → `invalid_choice`; dòng trống chỉ có khoảng trắng được giữ nguyên nội dung khi gộp.
+- 2026-11-05 (Bước 1, người dùng duyệt theo đề xuất): ngắn hơn tối thiểu → `out_of_range` (không có `too_short`); một dòng chặn mọi Cc (kể cả tab), nhiều dòng chỉ cho `\n`, `\t`, U+2028/U+2029 bị chặn ở cả hai; lỗi không gắn trường → `field: ""`; schema cũ chuyển sang `StrictModel` theo bước của từng module; null/thiếu → `required`, sai kiểu và `Digits` sai → `invalid_format`; giờ/ngày/UUID không trim, UUID chỉ chữ thường. Chốt khi nghiệm thu: múi giờ sai (phân biệt hoa thường) → `invalid_choice`; dòng chỉ có khoảng trắng giữ nguyên khi gộp.
 
 ## Việc còn treo
 
