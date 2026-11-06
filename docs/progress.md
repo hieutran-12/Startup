@@ -17,7 +17,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 8 | Danh sách ngân hàng, GET /banks | Xong 2026-11-06, đã duyệt: 662/662 test qua (37 mới), ruff sạch; `docs/modules/banks.md`, `invitations.md` |
 | 9 | Âm lịch | Xong 2026-11-06, đã duyệt: 685/685 test qua (23 mới), ruff sạch; `docs/modules/lunar.md`, `core.md` |
 | 10 | Response public mới | Xong 2026-11-06, đã duyệt: 704/704 test qua (19 mới), ruff sạch; `docs/modules/invitations.md`, `events.md`, `media.md`, `lunar.md` |
-| 11 | README, xoá code cũ | Xong 2026-11-06, chờ duyệt: 753/753 test qua (10 mới), ruff sạch; `README.md`, `docs/modules/invitations.md` |
+| 11 | README, xoá code cũ | Xong 2026-11-06, đã duyệt: 753/753 test qua (10 mới), ruff sạch; `README.md`, `docs/modules/invitations.md` |
 
 ## Ghi chú Bước 0–10 (đã gộp; chi tiết trong `docs/modules/`)
 
