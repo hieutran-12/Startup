@@ -1,10 +1,10 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`.
 
 ## File code chính
-- `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1)
+- `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
 - `app/core/schemas.py`: `StrictModel` (Bước 1); `field_error`, `duplicate_errors` (Bước 4, chuyển từ templates)
 - `app/core/errors.py`: `AppError`, `error_details`, handler lỗi (sửa ở Bước 1, 4)
 - `app/core/merge_patch.py`, `app/core/revision.py`: Merge Patch, ETag/If-Match (Bước 4); `main.py` CORS `expose_headers=["ETag"]`
@@ -24,6 +24,8 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `IsoDate`: đúng `YYYY-MM-DD` → `date`; `Uuid`: UUID chữ thường 36 ký tự → `uuid.UUID`. Sai → `invalid_format`
 - `Timezone`: trim, khớp đúng tên trong `zoneinfo.available_timezones()` (phân biệt hoa thường) → sai là `invalid_choice`
 - `Choice(E)`: StrEnum nhận chuỗi (`Annotated[E, Strict(False)]`) → sai là `invalid_choice`
+- `Latitude` / `Longitude`: số JSON (int, float) → `Decimal`; chuỗi, boolean, NaN/Infinity → `invalid_format` "Tọa độ phải là số"; ngoài [-90, 90] / [-180, 180] → `out_of_range`; quá 6 chữ số thập phân → `invalid_format` (không làm tròn). Float đổi qua `repr` (chữ số ngắn nhất như client viết). Nhận cả `Decimal` (giá trị đọc từ DB). JSON trả số
+- `HttpUrl(n)`: không bắt buộc; NFC, trim, rỗng → `None`; khoảng trắng (kể cả dấu cách Unicode), ký tự điều khiển, scheme khác `http://`/`https://` (không phân biệt hoa thường), thiếu host → `invalid_format`; dài quá → `too_long`. Giữ nguyên chuỗi, khác `pydantic.HttpUrl` (kiểu đó tự sửa URL)
 - `AppError(status, code, message, details=(), headers=None)`, `bad_request(..., details=())`, `not_found`, `conflict`, `unauthorized`, `validation_error(details)` (422 do service phát hiện)
 - `error_details(errors)`: `ValidationError.errors()` → `details` (loc không chứa body/query/path). Service tự validate thì nối tiền tố vào `loc` trước (content: `("content", *loc)`)
 - `merge_patch(target, patch)`: RFC 7386, nhưng null không xoá key: giá trị cũ là danh sách → `[]`, còn lại → `None` để schema trả `required` nếu trường không nhận null. Không sửa `target`
@@ -57,5 +59,6 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - FastAPI validate body ở chế độ Python: trong `StrictModel`, khai báo `uuid.UUID`, `date`, `time` hay Enum gốc sẽ từ chối mọi chuỗi. Luôn dùng `Uuid`, `IsoDate`, `LocalTime`, `Choice`. Kiểu `str` thường không được chuẩn hóa: chỉ dùng cho key so khớp nguyên văn (ví dụ `Appearance.palette_key`).
 - Lỗi độ dài chuỗi dùng loại `string_too_long` của Pydantic, vì `too_long` của Pydantic là lỗi độ dài danh sách (handler tra template tiếng Việt trước).
 - Union không nullable (`A | B`) sẽ thêm tên nhánh vào `loc`; `_field_path` chưa xử lý trường hợp này.
-- Chưa có số thập phân (`Decimal`) cho tọa độ, phần trăm: strict ở chế độ Python không nhận số JSON cho `Decimal`, cần kiểu riêng khi làm events (Bước 5).
-- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4). Còn auth (chưa có bước), media (Bước 7).
+- Strict ở chế độ Python không nhận số JSON cho `Decimal`: tọa độ dùng `Latitude`/`Longitude` (PlainValidator). Phần trăm (NUMERIC(5,2)) chưa có kiểu, chưa trường nào dùng.
+- `json.loads` của Starlette nhận `NaN`, `Infinity`: kiểu số thập phân phải tự chặn số không hữu hạn.
+- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4), events (Bước 5). Còn auth (chưa có bước), media (Bước 7).

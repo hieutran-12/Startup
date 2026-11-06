@@ -1,0 +1,209 @@
+"""Sự kiện của thiệp (spec 04 › Sự kiện, Sửa thiệp).
+
+Mọi thao tác ghi: khóa dòng thiệp (`SELECT … FOR UPDATE`), kiểm tra If-Match với revision của
+thiệp, ghi sự kiện rồi tăng revision của thiệp. Khóa này cũng giữ giới hạn 10 sự kiện khi có
+request đồng thời. Thứ tự kiểm tra: xem docs/modules/events.md.
+"""
+
+import uuid
+from collections.abc import Mapping, Sequence
+from enum import StrEnum
+from typing import Any
+
+from pydantic import ValidationError
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import settings
+from app.core.errors import bad_request, error_details, not_found, validation_error
+from app.core.revision import check_revision
+from app.modules.auth.models import User
+from app.modules.events.models import Event, EventType, HostSide
+from app.modules.events.schemas import EVENT_FIELDS, EventCreate, EventResponse, EventUpdate
+from app.modules.invitations import service as invitation_service
+from app.modules.invitations.models import Invitation
+
+# ---------- Tên mặc định ----------
+
+# Bảng tên mặc định khi event_name là null (spec 04 › Sự kiện). Thiếu cặp nào là cặp đó không có
+# tên mặc định: family_ceremony + both không hợp lệ, other bắt buộc có event_name.
+_DEFAULT_NAMES: dict[tuple[EventType, HostSide], str] = {
+    (EventType.ENGAGEMENT, HostSide.GROOM): "Lễ ăn hỏi",
+    (EventType.ENGAGEMENT, HostSide.BRIDE): "Lễ ăn hỏi",
+    (EventType.ENGAGEMENT, HostSide.BOTH): "Lễ ăn hỏi",
+    (EventType.FAMILY_CEREMONY, HostSide.GROOM): "Lễ thành hôn",
+    (EventType.FAMILY_CEREMONY, HostSide.BRIDE): "Lễ vu quy",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.GROOM): "Lễ cưới",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.BRIDE): "Lễ cưới",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.BOTH): "Lễ cưới",
+    (EventType.RECEPTION, HostSide.GROOM): "Tiệc cưới nhà trai",
+    (EventType.RECEPTION, HostSide.BRIDE): "Tiệc cưới nhà gái",
+    (EventType.RECEPTION, HostSide.BOTH): "Tiệc cưới",
+}
+
+
+def default_event_name(event_type: EventType, host_side: HostSide) -> str | None:
+    """Tên mặc định theo loại lễ và bên; None khi cặp này không có tên mặc định."""
+    return _DEFAULT_NAMES.get((EventType(event_type), HostSide(host_side)))
+
+
+def display_name(event: Event) -> str:
+    """event_name, hoặc tên mặc định. CHECK của bảng events bảo đảm luôn có một trong hai."""
+    name = event.event_name or default_event_name(event.event_type, event.host_side)
+    assert name is not None, f"Sự kiện {event.id} không có tên hiển thị"
+    return name
+
+
+def to_response(event: Event) -> EventResponse:
+    return EventResponse(
+        id=event.id,
+        event_type=event.event_type,
+        host_side=event.host_side,
+        event_name=event.event_name,
+        display_name=display_name(event),
+        event_date=event.event_date,
+        start_time=event.start_time,
+        end_time=event.end_time,
+        timezone=event.timezone,
+        venue_name=event.venue_name,
+        address=event.address,
+        latitude=event.latitude,
+        longitude=event.longitude,
+        maps_url=event.maps_url,
+        position=event.position,
+        created_at=event.created_at,
+        updated_at=event.updated_at,
+    )
+
+
+# ---------- Đọc ----------
+
+
+def display_order() -> tuple[Any, ...]:
+    """Ngày, rồi giờ bắt đầu, rồi position; chưa có ngày (hoặc chưa có giờ trong ngày) xếp cuối."""
+    return (
+        Event.event_date.asc().nulls_last(),
+        Event.start_time.asc().nulls_last(),
+        Event.position,
+        Event.created_at,
+        Event.id,
+    )
+
+
+async def list_for_invitation(
+    db: AsyncSession, owner: User, invitation_id: uuid.UUID
+) -> tuple[Invitation, list[Event]]:
+    invitation = await invitation_service.get_owned(db, owner, invitation_id)
+    events = await db.scalars(
+        select(Event).where(Event.invitation_id == invitation.id).order_by(*display_order())
+    )
+    return invitation, list(events)
+
+
+# ---------- Ghi ----------
+
+
+async def _lock_invitation(
+    db: AsyncSession, owner: User, invitation_id: uuid.UUID, if_match: str
+) -> Invitation:
+    invitation = await invitation_service.get_owned(db, owner, invitation_id, for_update=True)
+    check_revision(if_match, invitation.revision)
+    return invitation
+
+
+async def _get_event(db: AsyncSession, invitation: Invitation, event_id: uuid.UUID) -> Event:
+    event = await db.scalar(
+        select(Event).where(Event.id == event_id, Event.invitation_id == invitation.id)
+    )
+    if event is None:
+        raise not_found("event_not_found", "Không tìm thấy sự kiện")
+    return event
+
+
+def _column_values(data: EventCreate) -> dict[str, Any]:
+    """Giá trị ghi vào cột: enum thành chuỗi, còn lại giữ kiểu Python (date, time, Decimal)."""
+    return {
+        field: value.value if isinstance(value, StrEnum) else value
+        for field, value in ((field, getattr(data, field)) for field in EVENT_FIELDS)
+    }
+
+
+async def create(
+    db: AsyncSession, owner: User, invitation_id: uuid.UUID, data: EventCreate, if_match: str
+) -> tuple[Invitation, Event]:
+    invitation = await _lock_invitation(db, owner, invitation_id, if_match)
+    count = await db.scalar(
+        select(func.count()).select_from(Event).where(Event.invitation_id == invitation.id)
+    )
+    count = count or 0
+    if count >= settings.max_events_per_invitation:
+        raise bad_request(
+            "event_limit", f"Mỗi thiệp tối đa {settings.max_events_per_invitation} sự kiện"
+        )
+
+    # position liên tục từ 0 (xoá thì đánh số lại), nên sự kiện mới nhận position = số hiện có
+    event = Event(invitation_id=invitation.id, position=count, **_column_values(data))
+    db.add(event)
+    invitation.revision += 1
+    await db.commit()
+    return invitation, event
+
+
+def _merge(event: Event, data: EventUpdate) -> dict[str, Any]:
+    """JSON Merge Patch phẳng: trường được gửi thay giá trị đã lưu, null là xoá."""
+    stored: Mapping[str, Any] = {field: getattr(event, field) for field in EVENT_FIELDS}
+    return {**stored, **{field: getattr(data, field) for field in data.model_fields_set}}
+
+
+async def update(
+    db: AsyncSession,
+    owner: User,
+    invitation_id: uuid.UUID,
+    event_id: uuid.UUID,
+    data: EventUpdate,
+    if_match: str,
+) -> tuple[Invitation, Event, bool]:
+    """Trả về (thiệp, sự kiện, có thay đổi hay không). Không đổi gì thì không ghi."""
+    invitation = await _lock_invitation(db, owner, invitation_id, if_match)
+    event = await _get_event(db, invitation, event_id)
+    try:
+        merged = EventCreate.model_validate(_merge(event, data))
+    except ValidationError as exc:
+        raise validation_error(error_details(exc.errors())) from exc
+
+    changes = {
+        field: value
+        for field, value in _column_values(merged).items()
+        if value != getattr(event, field)
+    }
+    if not changes:
+        return invitation, event, False
+    for field, value in changes.items():
+        setattr(event, field, value)
+    invitation.revision += 1
+    await db.commit()
+    return invitation, event, True
+
+
+def _renumber(events: Sequence[Event]) -> None:
+    for position, event in enumerate(events):
+        if event.position != position:
+            event.position = position
+
+
+async def delete(
+    db: AsyncSession, owner: User, invitation_id: uuid.UUID, event_id: uuid.UUID, if_match: str
+) -> Invitation:
+    invitation = await _lock_invitation(db, owner, invitation_id, if_match)
+    event = await _get_event(db, invitation, event_id)
+    await db.delete(event)
+    # Giữ position liên tục 0..n-1 theo thứ tự position cũ (spec 02 › Thứ tự hiển thị)
+    remaining = await db.scalars(
+        select(Event)
+        .where(Event.invitation_id == invitation.id, Event.id != event.id)
+        .order_by(Event.position, Event.created_at, Event.id)
+    )
+    _renumber(list(remaining))
+    invitation.revision += 1
+    await db.commit()
+    return invitation

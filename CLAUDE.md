@@ -49,6 +49,7 @@ uv run python -m app.scripts.init_storage    # tạo bucket, CORS (lần đầu)
 uv run fastapi dev app/main.py             # chạy app: http://localhost:8000/docs
 uv run pytest                              # test (thiepcuoi_test, schema dựng bằng alembic upgrade head)
 uv run ruff check .                        # lint
+uv run ruff format .                       # format (repo theo format của ruff)
 uv run alembic check                       # model khớp migration (như autogenerate, không ghi file)
 ```
 Sửa migration 0001 thì DB dev phải dựng lại: `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` rồi upgrade, seed.

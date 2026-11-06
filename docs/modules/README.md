@@ -40,7 +40,7 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 | auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (giữ từ khung) | 2 (model giữ nguyên, không sửa code) | chưa có |
 | templates | `app/modules/templates/`, `app/scripts/seed_templates.py` | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | [templates.md](templates.md) |
 | invitations | `app/modules/invitations/` (có `public_router`, `slugs.py`) | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish; trang public `GET /public/invitations/{slug}` (lọc side, display_name, lunar_date, media_by_id) | 2, 4, 6, 10 | [invitations.md](invitations.md) |
-| events | `app/modules/events/` (Bước 2: chỉ `models.py`) | Bảng events, CRUD, tên mặc định, thứ tự, giới hạn 10 | 2, 5 | [events.md](events.md) |
+| events | `app/modules/events/` | Bảng events, CRUD (`/invitations/{id}/events`), tên mặc định, thứ tự, giới hạn 10, If-Match | 2, 5 | [events.md](events.md) |
 | media | `app/modules/media/`, `app/scripts/init_storage.py` | Bảng media và albums, upload-url, endpoint album; `kind` image/audio, giới hạn theo loại, xoá file thì dọn tham chiếu | 2, 7 | [media.md](media.md) |
 | banks | chưa có (vị trí chốt ở Bước 8) | File tĩnh danh sách ngân hàng, `GET /banks`, kiểm tra gifts | 8 | chưa có |
 | lunar | chưa có (`app/core/lunar.py`) | Âm lịch Việt Nam UTC+7 | 9 | chưa có |

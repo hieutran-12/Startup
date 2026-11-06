@@ -50,6 +50,7 @@ class Settings(BaseSettings):
     ]
     max_media_per_invitation: int = 200
     max_invitations_per_user: int = 5
+    max_events_per_invitation: int = 10
 
     # Next.js on-demand revalidation (để trống thì bỏ qua)
     frontend_revalidate_url: str | None = None

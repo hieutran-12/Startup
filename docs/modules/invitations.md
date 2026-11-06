@@ -16,7 +16,7 @@ Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge
 
 ## Phụ thuộc
 - Dùng: core (`merge_patch`, `revision`, `validation_error`, `field_error`), auth (`User`), templates (`TemplateManifest`, `Key`, `SectionKey`), media (`Media`, `MediaKind`, `MediaStatus`, `Album`), events (`Event`, tính `primary_event_date`)
-- Được dùng bởi: media (`OwnedInvitation`), events (FK `events.invitation_id`; Bước 5 tăng revision của thiệp)
+- Được dùng bởi: media (`OwnedInvitation`), events (`get_owned(for_update=True)`, tăng `revision` của thiệp khi ghi sự kiện)
 
 ## Quy tắc spec đang áp dụng
 - Cột, CHECK, khóa ngoại kép → 03 › invitations. Content v1 → 03 › Nội dung thiệp. NULL/rỗng → 02

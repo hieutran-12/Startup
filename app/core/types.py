@@ -10,14 +10,17 @@ và Enum từ chối giá trị dạng chuỗi. Vì vậy dùng Uuid, IsoDate, L
 """
 
 import contextlib
+import math
 import re
 import unicodedata
 import uuid
 import zoneinfo
 from datetime import date, datetime, time
+from decimal import Decimal
 from enum import Enum
 from functools import cache, partial
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from pydantic import AfterValidator, PlainSerializer, PlainValidator, Strict, WithJsonSchema
 from pydantic_core import PydanticCustomError
@@ -29,6 +32,11 @@ _MULTI_LINE_FORBIDDEN = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f  ]")
 # Sau khi đã chặn ký tự điều khiển, \s chỉ còn các dấu cách Unicode (Zs, gồm cả NBSP)
 _SPACES = re.compile(r"\s+")
 _MAX_BLANK_LINES = 2
+
+# URL không được chứa khoảng trắng (kể cả dấu cách Unicode) hay ký tự điều khiển
+_URL_FORBIDDEN = re.compile(r"[\s\x00-\x1f\x7f-\x9f]")
+# Scheme không phân biệt hoa thường (RFC 3986), giá trị vẫn giữ nguyên như client gửi
+_URL_SCHEME = re.compile(r"https?://", re.IGNORECASE)
 
 _DIGITS = re.compile(r"[0-9]+")
 _TIME = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
@@ -150,6 +158,81 @@ def RequiredMultiLine(max_length: int) -> Any:
     return Annotated[
         str, AfterValidator(validate), _string_schema({"maxLength": max_length}, nullable=False)
     ]
+
+
+# ---------- URL ----------
+
+
+def _http_url(value: str | None, *, max_length: int) -> str | None:
+    if value is None:
+        return None
+    value = unicodedata.normalize("NFC", value).strip()
+    if not value:
+        return None
+    if _URL_FORBIDDEN.search(value) or not _URL_SCHEME.match(value):
+        raise PydanticCustomError(
+            "invalid_format",
+            "Link phải bắt đầu bằng http:// hoặc https:// và không có khoảng trắng",
+        )
+    try:
+        host = urlsplit(value).hostname
+    except ValueError:  # ví dụ IPv6 thiếu dấu ], cổng không phải số
+        host = None
+    if not host:
+        raise PydanticCustomError("invalid_format", "Link thiếu tên miền")
+    return _empty_or_too_long(value, max_length=max_length, required=False)
+
+
+def HttpUrl(max_length: int) -> Any:
+    """Link http/https không bắt buộc (spec 02 › URL). Rỗng sau trim thì thành None.
+
+    Chỉ NFC và trim, không chuẩn hóa gì thêm (không thêm "/", không đổi host): sai thì từ chối.
+    Khác `pydantic.HttpUrl` (kiểu đó tự sửa URL).
+    """
+    validate = partial(_http_url, max_length=max_length)
+    schema = {"format": "uri", "maxLength": max_length, "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://"}
+    return Annotated[str | None, AfterValidator(validate), _string_schema(schema, nullable=True)]
+
+
+# ---------- Tọa độ ----------
+
+_COORDINATE_DECIMAL_PLACES = 6  # NUMERIC(9,6)
+
+
+def _coordinate(value: Any, *, limit: int, name: str) -> Decimal:
+    # Request JSON cho int/float; Decimal là giá trị đọc từ database (kiểm tra lại bản đã gộp)
+    if isinstance(value, bool) or not isinstance(value, int | float | Decimal):
+        raise PydanticCustomError("invalid_format", "Tọa độ phải là số")
+    if isinstance(value, float):
+        if not math.isfinite(value):  # json.loads nhận NaN, Infinity
+            raise PydanticCustomError("invalid_format", "Tọa độ phải là số")
+        value = Decimal(repr(value))  # repr: chữ số ngắn nhất, giống số client đã viết
+    number = Decimal(value)
+    if not number.is_finite():
+        raise PydanticCustomError("invalid_format", "Tọa độ phải là số")
+    if not -limit <= number <= limit:
+        raise PydanticCustomError("out_of_range", f"{name} phải trong khoảng -{limit} đến {limit}")
+    exponent = number.normalize().as_tuple().exponent
+    if isinstance(exponent, int) and -exponent > _COORDINATE_DECIMAL_PLACES:
+        # Không tự làm tròn (spec 02 › nguyên tắc 11); NUMERIC(9,6) sẽ làm tròn âm thầm
+        raise PydanticCustomError("invalid_format", "Tối đa 6 chữ số sau dấu thập phân")
+    return number
+
+
+def _coordinate_type(limit: int, name: str) -> Any:
+    return Annotated[
+        Decimal,
+        PlainValidator(partial(_coordinate, limit=limit, name=name)),
+        PlainSerializer(float, return_type=float, when_used="json"),
+        WithJsonSchema({"type": "number", "minimum": -limit, "maximum": limit}),
+    ]
+
+
+Latitude = _coordinate_type(90, "Vĩ độ")
+"""Vĩ độ [-90, 90], tối đa 6 chữ số thập phân. Nhận số JSON (không nhận chuỗi), trả số JSON."""
+
+Longitude = _coordinate_type(180, "Kinh độ")
+"""Kinh độ [-180, 180], tối đa 6 chữ số thập phân."""
 
 
 # ---------- Mã định danh toàn chữ số ----------

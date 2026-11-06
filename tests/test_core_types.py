@@ -3,9 +3,11 @@
 Validate ở chế độ Python (model_validate) vì FastAPI cũng validate body như vậy.
 """
 
+import json
 import unicodedata
 import uuid
 from datetime import date, time
+from decimal import Decimal
 from enum import StrEnum
 from typing import Any
 
@@ -17,8 +19,11 @@ from app.core.schemas import StrictModel
 from app.core.types import (
     Choice,
     Digits,
+    HttpUrl,
     IsoDate,
+    Latitude,
     LocalTime,
+    Longitude,
     MultiLine,
     RequiredDigits,
     RequiredMultiLine,
@@ -50,6 +55,9 @@ class Sample(StrictModel):
     side: Choice(Side) | None = None
     guest_count: int | None = None
     is_visible: bool = False
+    latitude: Latitude | None = None
+    longitude: Longitude | None = None
+    maps_url: HttpUrl(40) = None
 
 
 class RequiredOnly(StrictModel):
@@ -240,6 +248,131 @@ def test_timezone_accepts_iana_name(raw: str) -> None:
 @pytest.mark.parametrize("raw", ["asia/ho_chi_minh", "Asia/Hanoi", "UTC+7", "GMT+07:00"])
 def test_timezone_rejects_unknown_name(raw: str) -> None:
     assert errors({"timezone": raw}) == [("timezone", "invalid_choice")]
+
+
+# ---------- Tọa độ ----------
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (21.028511, Decimal("21.028511")),
+        (21, Decimal("21")),
+        (0, Decimal("0")),
+        (-90, Decimal("-90")),
+        (90.0, Decimal("90.0")),
+        (-0.000001, Decimal("-0.000001")),
+    ],
+)
+def test_latitude_accepts_json_number(raw: Any, expected: Decimal) -> None:
+    sample = parse(latitude=raw)
+
+    assert isinstance(sample.latitude, Decimal)
+    assert sample.latitude == expected
+    # Trả ra JSON là số, không phải chuỗi
+    assert json.loads(sample.model_dump_json())["latitude"] == float(expected)
+
+
+def test_coordinate_accepts_decimal_from_database() -> None:
+    assert parse(longitude=Decimal("105.804817")).longitude == Decimal("105.804817")
+
+
+@pytest.mark.parametrize("raw", [-180, 180, 105.804817])
+def test_longitude_accepts_full_range(raw: Any) -> None:
+    assert parse(longitude=raw).longitude == Decimal(str(raw))
+
+
+@pytest.mark.parametrize(
+    "raw", ["21.028511", "21", "", True, False, float("nan"), float("inf"), [21], {"lat": 21}]
+)
+def test_coordinate_rejects_non_numbers(raw: Any) -> None:
+    assert details({"latitude": raw}) == [
+        {"field": "latitude", "code": "invalid_format", "message": "Tọa độ phải là số"}
+    ]
+
+
+@pytest.mark.parametrize("raw", [21.0285111, 0.0000001, Decimal("21.0285111")])
+def test_coordinate_rejects_more_than_six_decimal_places(raw: Any) -> None:
+    assert details({"latitude": raw}) == [
+        {
+            "field": "latitude",
+            "code": "invalid_format",
+            "message": "Tối đa 6 chữ số sau dấu thập phân",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    ("field", "raw", "message"),
+    [
+        ("latitude", 90.000001, "Vĩ độ phải trong khoảng -90 đến 90"),
+        ("latitude", -91, "Vĩ độ phải trong khoảng -90 đến 90"),
+        ("latitude", 1e300, "Vĩ độ phải trong khoảng -90 đến 90"),
+        ("longitude", 180.5, "Kinh độ phải trong khoảng -180 đến 180"),
+        ("longitude", -181, "Kinh độ phải trong khoảng -180 đến 180"),
+    ],
+)
+def test_coordinate_out_of_range(field: str, raw: Any, message: str) -> None:
+    assert details({field: raw}) == [{"field": field, "code": "out_of_range", "message": message}]
+
+
+def test_coordinate_null_is_allowed() -> None:
+    assert parse(latitude=None).latitude is None
+
+
+# ---------- URL ----------
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "https://maps.app.goo.gl/abc",
+        "http://example.com",
+        "HTTPS://Example.com/a?b=c#d",
+        "https://maps.google.com/?q=Hà_Nội",
+        "https://[::1]:8080/x",
+    ],
+)
+def test_http_url_is_kept_as_sent(raw: str) -> None:
+    assert parse(maps_url=raw).maps_url == raw
+
+
+def test_http_url_is_trimmed_and_nfc() -> None:
+    raw = unicodedata.normalize("NFD", "  https://x.vn/Hà  ")
+    assert parse(maps_url=raw).maps_url == "https://x.vn/Hà"
+
+
+@pytest.mark.parametrize("raw", ["", "   "])
+def test_empty_http_url_becomes_null(raw: str) -> None:
+    assert parse(maps_url=raw).maps_url is None
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "maps.google.com",
+        "ftp://example.com",
+        "javascript:alert(1)",
+        "mailto:nam@example.com",
+        "https:example.com",
+        "//example.com",
+        "https://",
+        "https:///path",
+        "http://exa mple.com",
+        "https://example.com/a\nb",
+        "https://example.com/\u00a0x",
+        "https://[::1/x",
+        123,
+    ],
+)
+def test_http_url_rejects_other_values(raw: Any) -> None:
+    assert errors({"maps_url": raw}) == [("maps_url", "invalid_format")]
+
+
+def test_http_url_too_long() -> None:
+    assert details({"maps_url": "https://example.com/" + "a" * 21}) == [
+        {"field": "maps_url", "code": "too_long", "message": "Tối đa 40 ký tự"}
+    ]
 
 
 # ---------- UUID, ngày, enum ----------

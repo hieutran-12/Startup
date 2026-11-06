@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.errors import register_error_handlers
 from app.modules.auth.router import router as auth_router
+from app.modules.events.router import router as events_router
 from app.modules.invitations.router import public_router
 from app.modules.invitations.router import router as invitations_router
 from app.modules.media.router import router as media_router
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(templates_router)
     app.include_router(invitations_router)
+    app.include_router(events_router)
     app.include_router(media_router)
     app.include_router(public_router)
 
