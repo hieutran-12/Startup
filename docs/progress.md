@@ -52,6 +52,9 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 
 ## Việc còn treo
 
-- Spec còn trỏ tới `docs/spec-v1.md` (01 › Mục đích và cách dùng; 06 › Mẫu câu giao việc). Chờ quyết định có sửa spec không.
-- Schema request của auth (`RegisterRequest`, `LoginRequest`) chưa chuyển sang `StrictModel`/`SingleLine`, và kế hoạch không có bước nào cho auth. Chờ quyết định làm ở bước nào.
-- Bản xuất spec mất định dạng: bảng bị trải mỗi ô một dòng; mất sơ đồ quan hệ bảng (03 › "Mũi tên đi từ…") và link "(nguồn)" ở 04 › Ngày âm lịch.
+- Schema request của auth (`RegisterRequest`, `LoginRequest`) chưa chuyển sang `StrictModel`/`SingleLine`, và kế hoạch không có bước nào cho auth. Đã duyệt làm cùng đợt Bước 11 (2026-11-06).
+
+## Việc treo đã xử lý
+
+- 2026-11-06 (người dùng duyệt): spec 01–07 dựng lại định dạng từ doc gốc trên Claude Docs ("Đặc tả backend thiệp cưới v1", rev 15, xuất markdown): bảng, khối code, link "(nguồn)" ở 04 › Ngày âm lịch; sơ đồ quan hệ 7 bảng vẽ lại bằng Mermaid ở 03; bảng 06 có cột "Đọc". Script so chữ xác nhận chữ không đổi ngoài các chỗ dưới đây. Doc trên Claude Docs không sửa (chưa có `audio/mp3`, `audio/x-m4a` của Bước 7).
+- 2026-11-06 (người dùng duyệt): spec bỏ chỗ trỏ tới `docs/spec-v1.md`: 01 › Mục đích và cách dùng ("Trong repo: spec nằm ở `docs/spec/01`–`07`…"; "Kế hoạch triển khai" → `06-ke-hoach.md`), 06 › Mẫu câu giao việc (dòng đầu trỏ `docs/spec/06-ke-hoach.md` và cột "Đọc").

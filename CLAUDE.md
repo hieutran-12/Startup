@@ -61,7 +61,7 @@ Module trong `docs/modules/<tên>.md` (danh sách và vị trí code: `docs/modu
 
 | Tác vụ | Spec | Module |
 | --- | --- | --- |
-| Làm một bước kế hoạch | 06 (dòng "Đọc:" của bước đó) | theo bước |
+| Làm một bước kế hoạch | 06 (cột "Đọc" của bước đó) | theo bước |
 | Tìm lý do của một quyết định | 01 | |
 | Kiểu dữ liệu, NULL/rỗng, chuẩn hóa chuỗi | 02 › Quy chuẩn dữ liệu; 04 › Chuẩn hóa chuỗi | core |
 | Định dạng lỗi, mã lỗi, mã HTTP | 05 › Định dạng lỗi | core |
