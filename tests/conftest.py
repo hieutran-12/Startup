@@ -132,6 +132,62 @@ def make_manifest(**overrides: Any) -> dict[str, Any]:
     return {**manifest, **overrides}
 
 
+EMPTY_PERSON: dict[str, Any] = {
+    "full_name": None,
+    "display_name": None,
+    "birth_order": None,
+    "bio": None,
+    "father": {"full_name": None, "is_deceased": False},
+    "mother": {"full_name": None, "is_deceased": False},
+    "family_address": None,
+}
+
+
+def empty_content(sections: list[str]) -> dict[str, Any]:
+    """Content v1 đầy đủ với mọi trường để trống: dạng service ghi khi tạo thiệp."""
+    return {
+        "couple": {"groom": EMPTY_PERSON, "bride": EMPTY_PERSON},
+        "messages": {"greeting": None, "invitation_message": None, "guest_notes": None},
+        "love_story": [],
+        "gifts": [],
+        "appearance": {
+            "palette_key": None,
+            "font_key": None,
+            "background_key": None,
+            "sections": list(sections),
+        },
+    }
+
+
+def make_minimal_manifest() -> dict[str, Any]:
+    """Manifest của `minimal_01` trong fixture: khác `make_manifest()` để test đổi template.
+
+    Giữ: section cover, events, gallery; palette burgundy; nền plain.
+    Không có: greeting, couple; palette ivory_gold; font playfair_display; nền paper.
+    """
+    burgundy = make_manifest()["palettes"][1]
+    charcoal = {
+        "key": "charcoal",
+        "name": "Than chì",
+        "primary": "#1F1F1F",
+        "secondary": "#BDBDBD",
+        "background": "#FFFFFF",
+        "text": "#1F1F1F",
+    }
+    return make_manifest(
+        sections=["cover", "events", "gallery", "gifts"],
+        default_sections=["cover", "events"],
+        palettes=[charcoal, burgundy],
+        fonts=[{"key": "be_vietnam_pro", "name": "Be Vietnam Pro"}],
+        backgrounds=[{"key": "plain", "name": "Trơn"}],
+        defaults={
+            "palette_key": "charcoal",
+            "font_key": "be_vietnam_pro",
+            "background_key": "plain",
+        },
+    )
+
+
 @pytest.fixture
 async def templates(session_maker: async_sessionmaker) -> dict[str, Template]:
     items = {
@@ -139,7 +195,10 @@ async def templates(session_maker: async_sessionmaker) -> dict[str, Template]:
             key="classic_01", name="Cổ điển", category="classic", manifest=make_manifest()
         ),
         "minimal_01": Template(
-            key="minimal_01", name="Tối giản", category="minimal", manifest=make_manifest()
+            key="minimal_01",
+            name="Tối giản",
+            category="minimal",
+            manifest=make_minimal_manifest(),
         ),
         "vintage_01": Template(
             key="vintage_01",

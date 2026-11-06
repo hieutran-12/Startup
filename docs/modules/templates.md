@@ -21,8 +21,8 @@ Danh mục mẫu thiệp (bảng `templates`), schema `TemplateManifest`, API đ
 - `seed(db, rows=TEMPLATES)`: kiểm tra trước, rồi upsert theo `key` trong một transaction; trả số mẫu. CLI: `main()`, sai thì in lỗi ra stderr và thoát mã 1
 
 ## Phụ thuộc
-- Dùng: core (`Base`, `enum_check`, `StrictModel`, `Choice`, `RequiredSingleLine`, `MultiLine`, `error_details`)
-- Được dùng bởi: invitations (`Invitation.template`, chọn mẫu khi tạo/sửa thiệp; Bước 4 dùng `manifest.default_sections`, `SectionKey`)
+- Dùng: core (`Base`, `enum_check`, `StrictModel`, `field_error`, `duplicate_errors`, `Choice`, `RequiredSingleLine`, `MultiLine`, `error_details`)
+- Được dùng bởi: invitations (`Invitation.template`; Bước 4 dùng `TemplateManifest` để kiểm tra appearance, `Key` cho `template_key`, `SectionKey`, `default_sections`)
 
 ## Quy tắc spec đang áp dụng
 - Cột, kiểu, NULL, DEFAULT, cấu trúc manifest → `docs/spec/03-mo-hinh-du-lieu.md` › templates
@@ -50,4 +50,5 @@ Danh mục mẫu thiệp (bảng `templates`), schema `TemplateManifest`, API đ
 - Query `category` vẫn là chuỗi tự do (giá trị lạ trả `[]`), chưa dùng `TemplateCategory`: ngoài phạm vi Bước 3
 - Không có CHECK snake_case cho `key` ở database (đã chốt Bước 2); `TemplateCreate` kiểm tra khi seed
 - Giữ index `ix_templates_category` của khung (spec không nhắc tới, đã chốt giữ)
-- Fixture `templates` trong `tests/conftest.py` dùng `make_manifest()` (manifest hợp lệ, nhỏ); key `classic_01`, `minimal_01`, `vintage_01` (premium), `old_01` (tắt)
+- Fixture `templates` trong `tests/conftest.py`: key `classic_01`, `minimal_01`, `vintage_01` (premium), `old_01` (tắt), đều dùng `make_manifest()` trừ `minimal_01` dùng `make_minimal_manifest()` (khác section, palette, font, nền để test đổi template, Bước 4)
+- Helper lỗi tham chiếu chéo (`field_error`, `duplicate_errors`) chuyển sang `app/core/schemas.py` ở Bước 4 để appearance của thiệp dùng chung

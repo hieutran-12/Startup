@@ -26,6 +26,7 @@ def create_app() -> FastAPI:
         allow_credentials=True,  # để trình duyệt gửi cookie refresh_token
         allow_methods=["*"],
         allow_headers=["*"],
+        expose_headers=["ETag"],  # để JS ở Next.js đọc được revision của thiệp
     )
     register_error_handlers(app)
 

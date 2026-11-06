@@ -2,14 +2,17 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import CurrentUser, DbSession
 from app.core.revalidate import revalidate_invitation
+from app.core.revision import IfMatch, etag
 from app.core.storage import Storage, get_storage
 from app.modules.invitations import service
+from app.modules.invitations.models import Invitation
 from app.modules.invitations.schemas import (
     InvitationCreate,
-    InvitationOut,
+    InvitationResponse,
     InvitationUpdate,
     PublicInvitationOut,
     SlugAvailability,
@@ -21,10 +24,17 @@ public_router = APIRouter(prefix="/public", tags=["public"])
 StorageDep = Annotated[Storage, Depends(get_storage)]
 
 
-@router.get("", response_model=list[InvitationOut])
-async def list_my_invitations(user: CurrentUser, db: DbSession) -> list[InvitationOut]:
-    invitations = await service.list_for_owner(db, user)
-    return [InvitationOut.model_validate(i) for i in invitations]
+async def _respond(
+    db: AsyncSession, response: Response, invitation: Invitation
+) -> InvitationResponse:
+    """Response của một thiệp: kèm header ETag chứa revision (spec 04 › Sửa thiệp)."""
+    response.headers["ETag"] = etag(invitation.revision)
+    return await service.to_response(db, invitation)
+
+
+@router.get("", response_model=list[InvitationResponse])
+async def list_my_invitations(user: CurrentUser, db: DbSession) -> list[InvitationResponse]:
+    return await service.list_for_owner(db, user)
 
 
 # Khai báo trước "/{invitation_id}" để không bị route đó bắt nhầm
@@ -35,50 +45,63 @@ async def check_slug_availability(
     return await service.check_slug(db, slug)
 
 
-@router.post("", response_model=InvitationOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=InvitationResponse, status_code=status.HTTP_201_CREATED)
 async def create_invitation(
-    data: InvitationCreate, user: CurrentUser, db: DbSession
-) -> InvitationOut:
+    data: InvitationCreate, user: CurrentUser, db: DbSession, response: Response
+) -> InvitationResponse:
     invitation = await service.create(db, user, data)
-    return InvitationOut.model_validate(invitation)
+    return await _respond(db, response, invitation)
 
 
-@router.get("/{invitation_id}", response_model=InvitationOut)
+@router.get("/{invitation_id}", response_model=InvitationResponse)
 async def get_invitation(
-    invitation_id: uuid.UUID, user: CurrentUser, db: DbSession
-) -> InvitationOut:
-    return InvitationOut.model_validate(await service.get_owned(db, user, invitation_id))
+    invitation_id: uuid.UUID, user: CurrentUser, db: DbSession, response: Response
+) -> InvitationResponse:
+    invitation = await service.get_owned(db, user, invitation_id)
+    return await _respond(db, response, invitation)
 
 
-@router.patch("/{invitation_id}", response_model=InvitationOut)
+@router.patch("/{invitation_id}", response_model=InvitationResponse)
 async def update_invitation(
     invitation_id: uuid.UUID,
     data: InvitationUpdate,
     user: CurrentUser,
+    if_match: IfMatch,  # sau CurrentUser: chưa đăng nhập thì 401 trước 428
     db: DbSession,
     background: BackgroundTasks,
-) -> InvitationOut:
-    invitation, slugs = await service.update(db, user, invitation_id, data)
-    background.add_task(revalidate_invitation, *slugs)
-    return InvitationOut.model_validate(invitation)
+    response: Response,
+) -> InvitationResponse:
+    """JSON Merge Patch (nhận cả `application/merge-patch+json`), bắt buộc If-Match."""
+    invitation, slugs = await service.update(db, user, invitation_id, data, if_match)
+    if slugs:
+        background.add_task(revalidate_invitation, *slugs)
+    return await _respond(db, response, invitation)
 
 
-@router.post("/{invitation_id}/publish", response_model=InvitationOut)
+@router.post("/{invitation_id}/publish", response_model=InvitationResponse)
 async def publish_invitation(
-    invitation_id: uuid.UUID, user: CurrentUser, db: DbSession, background: BackgroundTasks
-) -> InvitationOut:
+    invitation_id: uuid.UUID,
+    user: CurrentUser,
+    db: DbSession,
+    background: BackgroundTasks,
+    response: Response,
+) -> InvitationResponse:
     invitation = await service.publish(db, user, invitation_id)
     background.add_task(revalidate_invitation, invitation.slug)
-    return InvitationOut.model_validate(invitation)
+    return await _respond(db, response, invitation)
 
 
-@router.post("/{invitation_id}/unpublish", response_model=InvitationOut)
+@router.post("/{invitation_id}/unpublish", response_model=InvitationResponse)
 async def unpublish_invitation(
-    invitation_id: uuid.UUID, user: CurrentUser, db: DbSession, background: BackgroundTasks
-) -> InvitationOut:
+    invitation_id: uuid.UUID,
+    user: CurrentUser,
+    db: DbSession,
+    background: BackgroundTasks,
+    response: Response,
+) -> InvitationResponse:
     invitation = await service.unpublish(db, user, invitation_id)
     background.add_task(revalidate_invitation, invitation.slug)
-    return InvitationOut.model_validate(invitation)
+    return await _respond(db, response, invitation)
 
 
 @router.delete("/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)

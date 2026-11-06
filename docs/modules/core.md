@@ -1,12 +1,13 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Từ Bước 1 có thêm tầng chuẩn hóa dữ liệu request và định dạng lỗi chung. Bước 2: migration 0001 viết lại, test dựng schema bằng migration.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1)
-- `app/core/schemas.py`: `StrictModel`, base model của schema request (Bước 1)
-- `app/core/errors.py`: `AppError`, `error_details`, handler lỗi (sửa ở Bước 1)
+- `app/core/schemas.py`: `StrictModel` (Bước 1); `field_error`, `duplicate_errors` (Bước 4, chuyển từ templates)
+- `app/core/errors.py`: `AppError`, `error_details`, handler lỗi (sửa ở Bước 1, 4)
+- `app/core/merge_patch.py`, `app/core/revision.py`: Merge Patch, ETag/If-Match (Bước 4); `main.py` CORS `expose_headers=["ETag"]`
 - `app/core/db.py`: `Base` (naming convention), mixin id/timestamp, `enum_check` (Bước 2)
 - `alembic/versions/20261104_0001_initial_schema.py`: toàn bộ 7 bảng (viết lại ở Bước 2)
 - `alembic/env.py`: `COMPARE_OPTIONS` (so kiểu và DEFAULT), nhận connection truyền vào (Bước 2)
@@ -23,8 +24,10 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `IsoDate`: đúng `YYYY-MM-DD` → `date`; `Uuid`: UUID chữ thường 36 ký tự → `uuid.UUID`. Sai → `invalid_format`
 - `Timezone`: trim, khớp đúng tên trong `zoneinfo.available_timezones()` (phân biệt hoa thường) → sai là `invalid_choice`
 - `Choice(E)`: StrEnum nhận chuỗi (`Annotated[E, Strict(False)]`) → sai là `invalid_choice`
-- `AppError(status, code, message, details=())`, `bad_request(..., details=())`, `not_found`, `conflict`, `unauthorized`
-- `error_details(errors)`: `ValidationError.errors()` → `details` (loc không chứa body/query/path). Dùng lại khi service tự validate (ví dụ content sau Merge Patch)
+- `AppError(status, code, message, details=(), headers=None)`, `bad_request(..., details=())`, `not_found`, `conflict`, `unauthorized`, `validation_error(details)` (422 do service phát hiện)
+- `error_details(errors)`: `ValidationError.errors()` → `details` (loc không chứa body/query/path). Service tự validate thì nối tiền tố vào `loc` trước (content: `("content", *loc)`)
+- `merge_patch(target, patch)`: RFC 7386, nhưng null không xoá key: giá trị cũ là danh sách → `[]`, còn lại → `None` để schema trả `required` nếu trường không nhận null. Không sửa `target`
+- `etag(revision)`, `IfMatch` (dependency, thiếu → 428 `revision_required`), `check_revision(if_match, current)` (khác `"<revision>"` → 409 `revision_conflict`, header `ETag` mới). Gọi `check_revision` sau `SELECT … FOR UPDATE`. Khai báo `IfMatch` sau `CurrentUser` để 401 đi trước 428
 - `error_response(...)`, `register_error_handlers(app)`: handler cho `AppError`, `RequestValidationError` (422 `validation_error`), `StarletteHTTPException` (404 `not_found`, 405 `method_not_allowed`, mã khác lấy từ tên HTTP status)
 
 ## Phụ thuộc
@@ -43,17 +46,16 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - Constraint có tên tường minh khi convention cho tên trùng (khóa ngoại kép của invitations, xem `invitations.md`).
 
 ## Ánh xạ lỗi Pydantic → mã spec (`errors.py`)
+- Lỗi raise thẳng mã spec (`types.py`, `field_error`): giữ nguyên mã và message, kể cả khi input null (sửa ở Bước 4)
 - `missing`, hoặc `null` gửi cho trường không nhận null (trừ trường lạ) → `required`
-- `extra_forbidden` → `unknown_field`; `string_too_long`, `too_long` → `too_long`
-- `string_too_short`, `too_short`, `greater_than*`, `less_than*` → `out_of_range` (đã chốt: spec không có `too_short`)
+- `extra_forbidden` → `unknown_field`; `string_too_long`, `too_long` → `too_long`; `string_too_short`, `too_short`, `greater_than*`, `less_than*` → `out_of_range` (spec không có `too_short`)
 - `enum`, `literal_error` → `invalid_choice`; mọi loại khác (sai kiểu, JSON hỏng, `value_error`) → `invalid_format`
 - `field`: `content.love_story[0].title`; lỗi không gắn với trường (JSON hỏng, body không phải object, thiếu body) → `""`
-- Lỗi tham chiếu chéo trong `model_validator`: raise `ValidationError.from_exception_data(...)` với `InitErrorDetails(loc=...)` thì Pydantic giữ `loc` của từng lỗi và nối tiền tố bên ngoài (`manifest.defaults.palette_key`). Ví dụ: `TemplateManifest` (`templates.md`)
+- Lỗi tham chiếu chéo trong `model_validator`: gom `field_error(loc, code, message, value)` rồi raise `ValidationError.from_exception_data(...)`; Pydantic giữ `loc` của từng lỗi và nối tiền tố bên ngoài. Ví dụ: `TemplateManifest`, `Appearance`, `LoveStoryItem`. Validator cần dữ liệu ngoài (manifest) thì đọc `info.context`
 
 ## Lưu ý
-- FastAPI validate body ở chế độ Python: trong `StrictModel`, khai báo `uuid.UUID`, `date`, `time` hay Enum gốc sẽ từ chối mọi chuỗi. Luôn dùng `Uuid`, `IsoDate`, `LocalTime`, `Choice`.
-- Kiểu `str` thường trong `StrictModel` không được chuẩn hóa: chuỗi phải dùng kiểu ở `types.py`.
+- FastAPI validate body ở chế độ Python: trong `StrictModel`, khai báo `uuid.UUID`, `date`, `time` hay Enum gốc sẽ từ chối mọi chuỗi. Luôn dùng `Uuid`, `IsoDate`, `LocalTime`, `Choice`. Kiểu `str` thường không được chuẩn hóa: chỉ dùng cho key so khớp nguyên văn (ví dụ `Appearance.palette_key`).
 - Lỗi độ dài chuỗi dùng loại `string_too_long` của Pydantic, vì `too_long` của Pydantic là lỗi độ dài danh sách (handler tra template tiếng Việt trước).
 - Union không nullable (`A | B`) sẽ thêm tên nhánh vào `loc`; `_field_path` chưa xử lý trường hợp này.
 - Chưa có số thập phân (`Decimal`) cho tọa độ, phần trăm: strict ở chế độ Python không nhận số JSON cho `Decimal`, cần kiểu riêng khi làm events (Bước 5).
-- Schema hiện có của auth, media, templates, invitations chưa chuyển sang `StrictModel` (quyết định Bước 1): đi theo bước của module; auth chưa có bước.
+- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4). Còn auth (chưa có bước), media (Bước 7).

@@ -1,102 +1,247 @@
+"""Schema của module invitations.
+
+Content v1 (spec 03 › Nội dung thiệp) là object đầy đủ: nhóm object luôn có mặt, văn bản không bắt
+buộc là null, danh sách là [], boolean mặc định false (spec 02 › NULL, rỗng và mặc định).
+`appearance` được kiểm tra theo manifest của template khi validate với
+`context={"manifest": TemplateManifest}`; không có context (đọc content đã lưu để trả response)
+thì chỉ kiểm tra cấu trúc.
+"""
+
+import unicodedata
 import uuid
-from datetime import datetime
-from typing import Annotated, Any, Literal
+from datetime import date, datetime
+from enum import StrEnum
+from functools import partial
+from typing import Annotated, Any, Self
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    WithJsonSchema,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
-from app.modules.invitations.slugs import slug_error
+from app.core.schemas import StrictModel, duplicate_errors, field_error
+from app.core.types import (
+    Choice,
+    MultiLine,
+    RequiredDigits,
+    RequiredSingleLine,
+    SingleLine,
+    Uuid,
+)
+from app.modules.invitations.slugs import (
+    SLUG_MAX_LENGTH,
+    SLUG_MIN_LENGTH,
+    SLUG_PATTERN,
+    slug_error,
+)
+from app.modules.templates.schemas import Key, SectionKey, TemplateManifest
 
-ShortText = Annotated[str | None, Field(max_length=200)]
+CONTENT_SCHEMA_VERSION = 1
 
 
-# ---------- Nội dung thiệp (lưu trong cột JSONB `content`) ----------
+class BirthOrder(StrEnum):
+    ELDEST = "eldest"
+    MIDDLE = "middle"
+    YOUNGEST = "youngest"
 
 
-class Person(BaseModel):
-    full_name: ShortText = None
-    short_name: str | None = Field(default=None, max_length=60)  # tên gọi trên thiệp: "Nam"
-    father_name: ShortText = None
-    mother_name: ShortText = None
-    hometown: ShortText = None
+class RecipientSide(StrEnum):
+    GROOM = "groom"
+    BRIDE = "bride"
 
 
-class Couple(BaseModel):
+# ---------- Nội dung thiệp (cột JSONB `content`, schema version 1) ----------
+
+
+class Parent(StrictModel):
+    full_name: SingleLine(100) = None
+    # true thì template in chữ "Cố" trước tên; người dùng không gõ chữ này vào ô tên
+    is_deceased: bool = False
+
+
+class Person(StrictModel):
+    full_name: SingleLine(100) = None  # bắt buộc khi publish
+    display_name: SingleLine(40) = None  # tên in to trên thiệp; null thì dùng full_name
+    birth_order: Choice(BirthOrder) | None = None
+    bio: MultiLine(500) = None
+    father: Parent = Field(default_factory=Parent)
+    mother: Parent = Field(default_factory=Parent)
+    family_address: SingleLine(300) = None
+
+
+class Couple(StrictModel):
     groom: Person = Field(default_factory=Person)
     bride: Person = Field(default_factory=Person)
 
 
-class Event(BaseModel):
-    kind: Literal["engagement", "ceremony", "reception", "other"] = "ceremony"
-    title: ShortText = None  # "Lễ vu quy", "Tiệc cưới nhà trai"...
-    starts_at: datetime | None = None
-    lunar_date_text: str | None = Field(
-        default=None, max_length=100
-    )  # "Tức ngày 15 tháng 10 năm Bính Ngọ"
-    venue_name: ShortText = None
-    address: str | None = Field(default=None, max_length=500)
-    map_url: HttpUrl | None = None
+class Messages(StrictModel):
+    greeting: MultiLine(1000) = None
+    invitation_message: MultiLine(500) = None  # null thì template dùng câu mặc định
+    guest_notes: MultiLine(1000) = None
 
 
-class BankAccount(BaseModel):
-    owner: Literal["groom", "bride", "other"] = "other"
-    bank_name: str = Field(max_length=100)
-    account_number: str = Field(max_length=50)
-    account_holder: str = Field(max_length=120)
-    qr_media_id: uuid.UUID | None = None
+class LoveStoryItem(StrictModel):
+    title: RequiredSingleLine(100)
+    description: MultiLine(1000) = None
+    year: int | None = Field(default=None, ge=1900, le=2100)
+    month: int | None = Field(default=None, ge=1, le=12)  # chỉ được có khi đã có year
+    media_id: Uuid | None = None  # ảnh ready của chính thiệp: service kiểm tra
+
+    @model_validator(mode="after")
+    def _month_needs_year(self) -> Self:
+        if self.month is not None and self.year is None:
+            error = field_error(("year",), "required", "Cần nhập năm khi có tháng", None)
+            raise ValidationError.from_exception_data(type(self).__name__, [error])
+        return self
 
 
-class InvitationContent(BaseModel):
-    # Cho phép thêm trường riêng của từng template mà không phải sửa backend
-    model_config = ConfigDict(extra="allow")
+class Gift(StrictModel):
+    recipient_side: Choice(RecipientSide)
+    bank_bin: RequiredDigits(6, 6)  # có trong danh sách ngân hàng: Bước 8
+    account_number: RequiredDigits(6, 19)
+    account_holder: RequiredSingleLine(100)
 
+
+def appearance_options(manifest: TemplateManifest) -> dict[str, set[str]]:
+    """Trường key của appearance → các key manifest cho phép."""
+    return {
+        "palette_key": {item.key for item in manifest.palettes},
+        "font_key": {item.key for item in manifest.fonts},
+        "background_key": {item.key for item in manifest.backgrounds},
+    }
+
+
+_OPTION_DESCRIPTION = "Key có trong manifest của template; null thì dùng manifest.defaults"
+
+
+class Appearance(StrictModel):
+    # Key so khớp nguyên văn với manifest (không trim, không đổi chữ hoa thường)
+    palette_key: str | None = Field(default=None, description=_OPTION_DESCRIPTION)
+    font_key: str | None = Field(default=None, description=_OPTION_DESCRIPTION)
+    background_key: str | None = Field(default=None, description=_OPTION_DESCRIPTION)
+    # Section hiển thị theo đúng thứ tự; section không có trong danh sách bị ẩn
+    sections: list[Choice(SectionKey)]
+
+    @model_validator(mode="after")
+    def _check_manifest(self, info: ValidationInfo) -> Self:
+        errors = list(duplicate_errors("sections", self.sections))
+        manifest: TemplateManifest | None = (info.context or {}).get("manifest")
+        if manifest is not None:
+            for field, keys in appearance_options(manifest).items():
+                value = getattr(self, field)
+                if value is not None and value not in keys:
+                    message = f"Mẫu thiệp không có {value}"
+                    errors.append(field_error((field,), "invalid_choice", message, value))
+            errors += [
+                field_error(
+                    ("sections", index),
+                    "invalid_choice",
+                    f"Mẫu thiệp không có section {section}",
+                    section,
+                )
+                for index, section in enumerate(self.sections)
+                if section not in manifest.sections
+            ]
+        if errors:
+            raise ValidationError.from_exception_data(type(self).__name__, errors)
+        return self
+
+
+class InvitationContent(StrictModel):
     couple: Couple = Field(default_factory=Couple)
-    greeting: str | None = Field(default=None, max_length=2000)  # lời ngỏ
-    love_story: str | None = Field(default=None, max_length=10000)
-    events: list[Event] = Field(default_factory=list, max_length=10)
-    cover_media_id: uuid.UUID | None = None
-    music_url: HttpUrl | None = None
-    bank_accounts: list[BankAccount] = Field(default_factory=list, max_length=6)
-    theme: dict[str, str] = Field(default_factory=dict, max_length=20)
+    messages: Messages = Field(default_factory=Messages)
+    love_story: list[LoveStoryItem] = Field(default_factory=list, max_length=12)
+    gifts: list[Gift] = Field(default_factory=list, max_length=4)
+    appearance: Appearance  # không có mặc định: service lấy sections từ manifest.default_sections
 
 
-# ---------- Request / response ----------
+# ---------- Request ----------
 
 
-def _validate_slug(value: str) -> str:
-    value = value.strip().lower()
+def _slug(value: str | None, *, required: bool) -> str | None:
+    """NFC, trim, chữ thường; rỗng thì null hoặc required; sai quy tắc thì invalid_format."""
+    if value is None:
+        return None
+    value = unicodedata.normalize("NFC", value).strip().lower()
+    if not value:
+        if required:
+            raise PydanticCustomError("required", "Không được để trống")
+        return None
     if reason := slug_error(value):
-        raise ValueError(reason)
+        raise PydanticCustomError("invalid_format", reason)
     return value
 
 
-Slug = Annotated[str, AfterValidator(_validate_slug)]
+_SLUG_SCHEMA = {
+    "type": "string",
+    "minLength": SLUG_MIN_LENGTH,
+    "maxLength": SLUG_MAX_LENGTH,
+    "pattern": SLUG_PATTERN.pattern,
+}
+
+Slug = Annotated[str, AfterValidator(partial(_slug, required=True)), WithJsonSchema(_SLUG_SCHEMA)]
+OptionalSlug = Annotated[
+    str | None,
+    AfterValidator(partial(_slug, required=False)),
+    WithJsonSchema({"anyOf": [_SLUG_SCHEMA, {"type": "null"}]}),
+]
+
+_CONTENT_PATCH_DESCRIPTION = (
+    "JSON Merge Patch áp lên content (schema InvitationContent): không gửi thì giữ nguyên, "
+    "null thì xoá giá trị (danh sách thành []), danh sách bị thay nguyên"
+)
 
 
-class InvitationCreate(BaseModel):
-    template_key: str = Field(max_length=64)
-    title: str | None = Field(default=None, max_length=120)
-    slug: Slug | None = None  # bỏ trống thì hệ thống tự sinh từ tên cô dâu chú rể
-    content: InvitationContent = Field(default_factory=InvitationContent)
+class InvitationCreate(StrictModel):
+    template_key: Key
+    title: SingleLine(120) = Field(
+        default=None, description="Bỏ trống thì đặt theo tên cô dâu chú rể"
+    )
+    slug: OptionalSlug = Field(default=None, description="Bỏ trống thì tự sinh từ tên")
+    # Gộp lên content mặc định (appearance.sections lấy từ manifest.default_sections)
+    content: dict[str, Any] = Field(default=None, description=_CONTENT_PATCH_DESCRIPTION)
 
 
-class InvitationUpdate(BaseModel):
-    """PATCH: chỉ các trường được gửi lên mới bị thay đổi. `content` được thay thế toàn bộ."""
+class InvitationUpdate(StrictModel):
+    """PATCH theo JSON Merge Patch: chỉ trường được gửi mới bị đổi.
 
-    template_key: str | None = Field(default=None, max_length=64)
-    title: str | None = Field(default=None, min_length=1, max_length=120)
-    slug: Slug | None = None
-    content: InvitationContent | None = None
+    `title`, `slug`, `template_key`, `content` không nhận null (422 `required`);
+    `*_media_id` gửi null thì gỡ file khỏi thiệp.
+    """
+
+    title: RequiredSingleLine(120) = None
+    slug: Slug = None
+    template_key: Key = None
+    content: dict[str, Any] = Field(default=None, description=_CONTENT_PATCH_DESCRIPTION)
+    cover_media_id: Uuid | None = None
+    groom_photo_media_id: Uuid | None = None
+    bride_photo_media_id: Uuid | None = None
+    music_media_id: Uuid | None = None
 
 
-class InvitationOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
+# ---------- Response ----------
 
+
+class InvitationResponse(BaseModel):
     id: uuid.UUID
     slug: str
     title: str
     status: str
     template_key: str
-    content: dict[str, Any]
+    content_schema_version: int
+    revision: int
+    content: InvitationContent
+    cover_media_id: uuid.UUID | None
+    groom_photo_media_id: uuid.UUID | None
+    bride_photo_media_id: uuid.UUID | None
+    music_media_id: uuid.UUID | None
+    primary_event_date: date | None = Field(description="MIN(events.event_date) của thiệp")
     published_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -108,6 +253,7 @@ class SlugAvailability(BaseModel):
     reason: str | None = None
 
 
+# Response public giữ dạng khung, đổi ở Bước 10
 class PublicAlbum(BaseModel):
     id: uuid.UUID
     title: str

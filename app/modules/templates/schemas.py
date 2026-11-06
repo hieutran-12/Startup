@@ -9,7 +9,6 @@ danh sách trả `invalid_choice`.
 
 import re
 import uuid
-from collections.abc import Iterable, Sequence
 from enum import StrEnum
 from typing import Annotated, Self
 
@@ -22,9 +21,9 @@ from pydantic import (
     WithJsonSchema,
     model_validator,
 )
-from pydantic_core import InitErrorDetails, PydanticCustomError
+from pydantic_core import PydanticCustomError
 
-from app.core.schemas import StrictModel
+from app.core.schemas import StrictModel, duplicate_errors, field_error
 from app.core.types import Choice, MultiLine, RequiredSingleLine
 from app.modules.templates.models import TemplateCategory
 
@@ -123,21 +122,6 @@ class ManifestDefaults(StrictModel):
     background_key: Key
 
 
-def _error(loc: tuple[str | int, ...], code: str, message: str, value: object) -> InitErrorDetails:
-    return InitErrorDetails(type=PydanticCustomError(code, message), loc=loc, input=value)
-
-
-def _duplicates(
-    field: str, values: Sequence[object], *, suffix: tuple[str, ...] = ()
-) -> Iterable[InitErrorDetails]:
-    """Lỗi cho mỗi phần tử trùng với một phần tử đứng trước nó."""
-    seen: set[object] = set()
-    for index, value in enumerate(values):
-        if value in seen:
-            yield _error((field, index, *suffix), "invalid_format", f"Bị trùng: {value}", value)
-        seen.add(value)
-
-
 class TemplateManifest(StrictModel):
     """Những gì template hỗ trợ: section, palette, font, nền, giá trị mặc định."""
 
@@ -154,11 +138,11 @@ class TemplateManifest(StrictModel):
         # Chỉ chạy khi mọi trường đã hợp lệ. Raise ValidationError để mỗi lỗi có đường dẫn riêng
         # (ví dụ default_sections[1], defaults.palette_key); Pydantic nối thêm tiền tố bên ngoài.
         errors = [
-            *_duplicates("sections", self.sections),
-            *_duplicates("default_sections", self.default_sections),
+            *duplicate_errors("sections", self.sections),
+            *duplicate_errors("default_sections", self.default_sections),
         ]
         errors += [
-            _error(
+            field_error(
                 ("default_sections", index),
                 "invalid_choice",
                 f"{section} không có trong sections",
@@ -174,11 +158,11 @@ class TemplateManifest(StrictModel):
         }
         for default_field, (field, items) in options.items():
             keys = [item.key for item in items]
-            errors += _duplicates(field, keys, suffix=("key",))
+            errors += duplicate_errors(field, keys, suffix=("key",))
             value = getattr(self.defaults, default_field)
             if value not in keys:
                 errors.append(
-                    _error(
+                    field_error(
                         ("defaults", default_field),
                         "invalid_choice",
                         f"{value} không có trong {field}",

@@ -67,7 +67,7 @@ Module trong `docs/modules/<tên>.md` (danh sách và vị trí code: `docs/modu
 | Model, migration, CHECK, khóa ngoại | 03; 02 › Quy ước đặt tên | core + module của bảng |
 | Auth, users, refresh token | 03 › Bảng giữ nguyên | auth |
 | Template, manifest, seed | 03 › templates; 04 › Đổi template | templates |
-| Tạo/sửa thiệp, Merge Patch, revision, If-Match | 04 › Tạo thiệp, Sửa thiệp; 05 | invitations |
+| Tạo/sửa thiệp, Merge Patch, revision, If-Match | 04 › Tạo thiệp, Sửa thiệp; 05 | invitations + core |
 | Schema content (couple, messages, love_story, appearance) | 03 › Nội dung thiệp | invitations |
 | Publish | 04 › Publish | invitations |
 | Sự kiện | 03 › events; 04 › Sự kiện; 05 | events |

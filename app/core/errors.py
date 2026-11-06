@@ -97,11 +97,13 @@ class AppError(Exception):
         code: str,
         message: str,
         details: Sequence[ErrorDetail] = (),
+        headers: Mapping[str, str] | None = None,
     ) -> None:
         self.status_code = status_code
         self.code = code
         self.message = message
         self.details = list(details)
+        self.headers = dict(headers or {})
         super().__init__(message)
 
 
@@ -119,6 +121,13 @@ def bad_request(code: str, message: str, details: Sequence[ErrorDetail] = ()) ->
 
 def unauthorized(code: str = "unauthorized", message: str = "Chưa đăng nhập") -> AppError:
     return AppError(status.HTTP_401_UNAUTHORIZED, code, message)
+
+
+def validation_error(details: Sequence[ErrorDetail]) -> AppError:
+    """422 `validation_error` do service phát hiện (content sau Merge Patch, tham chiếu media)."""
+    return AppError(
+        status.HTTP_422_UNPROCESSABLE_CONTENT, "validation_error", "Dữ liệu không hợp lệ", details
+    )
 
 
 # ---------- Chuyển lỗi Pydantic sang details ----------
@@ -162,14 +171,16 @@ def error_details(errors: Sequence[Mapping[str, Any]]) -> list[ErrorDetail]:
     for error in errors:
         error_type = error["type"]
         if error_type in FIELD_ERROR_CODES:
+            # Mã spec raise thẳng (types.py, model_validator): giữ nguyên mã và message,
+            # kể cả khi input là null (ví dụ "Cần nhập năm khi có tháng" tại love_story[i].year)
             code = error_type
-        else:
-            code = _PYDANTIC_CODES.get(error_type, "invalid_format")
-        # null là "không có giá trị": gửi null cho trường không nhận null là thiếu giá trị
-        if code != "unknown_field" and error.get("input", _NO_INPUT) is None:
+            message = _message(error, code)
+        elif error_type != "extra_forbidden" and error.get("input", _NO_INPUT) is None:
+            # null là "không có giá trị": gửi null cho trường không nhận null là thiếu giá trị
             code = "required"
             message = _CODE_MESSAGES["required"]
         else:
+            code = _PYDANTIC_CODES.get(error_type, "invalid_format")
             message = _message(error, code)
         details.append({"field": _field_path(error), "code": code, "message": message})
     return details
@@ -204,7 +215,9 @@ def _http_error_code(status_code: int) -> str:
 def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
-        headers = {"WWW-Authenticate": "Bearer"} if exc.status_code == 401 else None
+        headers = dict(exc.headers)
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            headers.setdefault("WWW-Authenticate", "Bearer")
         return error_response(exc.status_code, exc.code, exc.message, exc.details, headers)
 
     @app.exception_handler(RequestValidationError)

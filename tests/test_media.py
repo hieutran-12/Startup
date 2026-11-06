@@ -2,7 +2,12 @@ from httpx import AsyncClient
 
 from tests.conftest import FakeStorage
 
-CONTENT = {"couple": {"groom": {"short_name": "Hùng"}, "bride": {"short_name": "Mai"}}}
+CONTENT = {
+    "couple": {
+        "groom": {"full_name": "Trần Văn Hùng", "display_name": "Hùng"},
+        "bride": {"full_name": "Đỗ Thị Mai", "display_name": "Mai"},
+    }
+}
 
 
 async def _invitation(client: AsyncClient, auth: dict) -> dict:
