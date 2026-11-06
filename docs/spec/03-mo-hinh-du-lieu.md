@@ -232,7 +232,7 @@ UNIQUE (invitation_id, id)
 CHECK (kind = 'image' OR (width IS NULL AND height IS NULL AND album_id IS NULL))
 File âm thanh không có kích thước ảnh và không nằm trong album
 Loại file cho phép
-Ảnh: image/jpeg, image/png, image/webp, image/avif, tối đa 15 MB. Âm thanh: audio/mpeg, audio/mp4, tối đa 10 MB
+Ảnh: image/jpeg, image/png, image/webp, image/avif, tối đa 15 MB. Âm thanh: audio/mpeg, audio/mp4, tối đa 10 MB; nhận thêm audio/mp3 (một số trình duyệt báo file .mp3 như vậy) và audio/x-m4a (trình duyệt thường báo file .m4a như vậy). mime_type lưu đúng loại client gửi, không đổi sang loại chuẩn
 Giới hạn số lượng
 200 ảnh và 1 file âm thanh mỗi thiệp
 Nội dung thiệp (content, schema version 1)

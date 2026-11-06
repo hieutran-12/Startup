@@ -107,7 +107,7 @@ async def _add_media(
     kind: str = "image",
     status: str = "ready",
 ) -> str:
-    """Ghi thẳng một file vào DB (upload âm thanh thuộc Bước 7)."""
+    """Ghi thẳng một file vào DB (nhanh hơn luồng upload; luồng thật: tests/test_media*.py)."""
     media_id = uuid.uuid4()
     async with session_maker() as db:
         db.add(

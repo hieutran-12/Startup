@@ -40,15 +40,12 @@ class Settings(BaseSettings):
     media_public_base_url: str = "http://localhost:9000/thiepcuoi-media"
     presigned_url_ttl_seconds: int = 600
 
-    # Giới hạn upload
-    max_upload_bytes: int = 15 * 1024 * 1024
-    allowed_image_types: Annotated[list[str], NoDecode] = [
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-        "image/avif",
-    ]
-    max_media_per_invitation: int = 200
+    # Giới hạn upload theo loại file (spec 03 › media). Loại file cho phép là tập cố định trong
+    # code (app/modules/media/models.py › MediaMimeType), không cấu hình qua biến môi trường.
+    max_image_bytes: int = 15 * 1024 * 1024
+    max_audio_bytes: int = 10 * 1024 * 1024
+    max_images_per_invitation: int = 200
+    max_audio_per_invitation: int = 1
     max_invitations_per_user: int = 5
     max_events_per_invitation: int = 10
 
@@ -56,7 +53,7 @@ class Settings(BaseSettings):
     frontend_revalidate_url: str | None = None
     frontend_revalidate_secret: str | None = None
 
-    @field_validator("cors_origins", "allowed_image_types", mode="before")
+    @field_validator("cors_origins", mode="before")
     @classmethod
     def split_csv(cls, value: object) -> object:
         if isinstance(value, str):

@@ -251,6 +251,32 @@ async def _media_reference_errors(
     return errors
 
 
+def release_media(invitation: Invitation, media_id: uuid.UUID) -> bool:
+    """Gỡ tham chiếu của thiệp tới một file sắp bị xoá (spec 04 › Tham chiếu media).
+
+    Gọi khi đã khóa dòng thiệp, trước khi xoá file trong cùng transaction. `love_story[].media_id`
+    trỏ tới file thì về null, mốc giữ nguyên; bốn cột `*_media_id` do khóa ngoại kép tự về null khi
+    xoá file. Thiệp đang dùng file (ở cột hoặc love_story) thì tăng revision 1 lần. Trả về True
+    nếu revision đã tăng.
+    """
+    in_columns = any(getattr(invitation, column) == media_id for column in MEDIA_REFERENCE_COLUMNS)
+    target = str(media_id)
+    love_story = invitation.content["love_story"]
+    in_love_story = any(item["media_id"] == target for item in love_story)
+    if in_love_story:
+        invitation.content = {
+            **invitation.content,
+            "love_story": [
+                {**item, "media_id": None} if item["media_id"] == target else item
+                for item in love_story
+            ],
+        }
+    if not (in_columns or in_love_story):
+        return False
+    invitation.revision += 1
+    return True
+
+
 # ---------- Điều kiện publish (spec 04 › Publish) ----------
 
 _REQUIRED_NAMES = {
@@ -541,10 +567,15 @@ async def get_public(db: AsyncSession, slug: str, storage: Storage) -> PublicInv
             .order_by(Album.position, Album.created_at)
         )
     ).all()
+    # Danh sách dạng khung là thư viện ảnh: không gồm file âm thanh (Bước 7; Bước 10 viết lại)
     media = (
         await db.scalars(
             select(Media)
-            .where(Media.invitation_id == invitation.id, Media.status == MediaStatus.READY.value)
+            .where(
+                Media.invitation_id == invitation.id,
+                Media.kind == MediaKind.IMAGE.value,
+                Media.status == MediaStatus.READY.value,
+            )
             .order_by(Media.position, Media.created_at)
         )
     ).all()

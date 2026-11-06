@@ -26,6 +26,45 @@ class MediaKind(StrEnum):
     AUDIO = "audio"
 
 
+class MediaMimeType(StrEnum):
+    """Loại file nhận upload (spec 03 › media › Loại file cho phép).
+
+    `mime_type` lưu đúng loại client gửi: audio/mp3 và audio/x-m4a không bị đổi sang audio/mpeg,
+    audio/mp4, vì link upload đã ký đúng Content-Type đó.
+    """
+
+    JPEG = "image/jpeg"
+    PNG = "image/png"
+    WEBP = "image/webp"
+    AVIF = "image/avif"
+    MPEG = "audio/mpeg"
+    MP3 = "audio/mp3"  # một số trình duyệt báo file .mp3 như vậy
+    MP4 = "audio/mp4"
+    X_M4A = "audio/x-m4a"  # trình duyệt thường báo file .m4a như vậy
+
+    @property
+    def kind(self) -> MediaKind:
+        """image/* là ảnh, audio/* là âm thanh (spec 05 › upload-url)."""
+        return MediaKind(self.value.split("/", 1)[0])
+
+    @property
+    def extension(self) -> str:
+        """Đuôi file trong storage_key."""
+        return _EXTENSIONS[self]
+
+
+_EXTENSIONS = {
+    MediaMimeType.JPEG: "jpg",
+    MediaMimeType.PNG: "png",
+    MediaMimeType.WEBP: "webp",
+    MediaMimeType.AVIF: "avif",
+    MediaMimeType.MPEG: "mp3",
+    MediaMimeType.MP3: "mp3",
+    MediaMimeType.MP4: "m4a",
+    MediaMimeType.X_M4A: "m4a",
+}
+
+
 class Album(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "albums"
 

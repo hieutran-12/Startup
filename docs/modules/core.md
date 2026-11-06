@@ -1,7 +1,7 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
@@ -11,7 +11,8 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `app/core/db.py`: `Base` (naming convention), mixin id/timestamp, `enum_check` (Bước 2)
 - `alembic/versions/20261104_0001_initial_schema.py`: toàn bộ 7 bảng (viết lại ở Bước 2)
 - `alembic/env.py`: `COMPARE_OPTIONS` (so kiểu và DEFAULT), nhận connection truyền vào (Bước 2)
-- `config.py`, `security.py`, `deps.py`, `storage.py`, `revalidate.py`: giữ từ khung
+- `config.py`: giữ từ khung; Bước 7 thay `max_upload_bytes`, `max_media_per_invitation`, `allowed_image_types` bằng `max_image_bytes` (15 MB), `max_audio_bytes` (10 MB), `max_images_per_invitation` (200), `max_audio_per_invitation` (1). Loại file cho phép là enum `MediaMimeType` của media, không cấu hình qua env
+- `security.py`, `deps.py`, `storage.py`, `revalidate.py`: giữ từ khung
 
 ## API công khai
 - `enum_check(column, StrEnum)`: chuỗi `<cột> IN ('a', 'b')` cho `CheckConstraint`; tên CHECK đặt dạng `name="<cột>_valid"`, convention thêm tiền tố `ck_<bảng>_`
@@ -61,4 +62,4 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - Union không nullable (`A | B`) sẽ thêm tên nhánh vào `loc`; `_field_path` chưa xử lý trường hợp này.
 - Strict ở chế độ Python không nhận số JSON cho `Decimal`: tọa độ dùng `Latitude`/`Longitude` (PlainValidator). Phần trăm (NUMERIC(5,2)) chưa có kiểu, chưa trường nào dùng.
 - `json.loads` của Starlette nhận `NaN`, `Infinity`: kiểu số thập phân phải tự chặn số không hữu hạn.
-- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4), events (Bước 5). Còn auth (chưa có bước), media (Bước 7).
+- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4), events (Bước 5), media kể cả album (Bước 7). Còn auth (chưa có bước).

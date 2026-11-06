@@ -262,3 +262,43 @@ async def auth(client: AsyncClient) -> dict[str, str]:
 @pytest.fixture
 async def other_auth(client: AsyncClient) -> dict[str, str]:
     return await register_user(client, email="khac@example.com")
+
+
+async def upload_media(
+    client: AsyncClient,
+    auth: dict[str, str],
+    storage: FakeStorage,
+    invitation_id: str,
+    *,
+    content_type: str = "image/jpeg",
+    size_bytes: int = 500_000,
+    filename: str = "tep",
+    album_id: str | None = None,
+    complete: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Mô phỏng đủ 3 bước FE làm: xin link, PUT file lên storage, xác nhận. Trả MediaResponse.
+
+    `complete` mặc định: ảnh gửi kích thước, âm thanh gửi `{}` (file âm thanh không có kích thước).
+    """
+    body: dict[str, Any] = {
+        "filename": filename,
+        "content_type": content_type,
+        "size_bytes": size_bytes,
+    }
+    if album_id is not None:
+        body["album_id"] = album_id
+    ticket = await client.post(
+        f"/invitations/{invitation_id}/media/upload-url", json=body, headers=auth
+    )
+    assert ticket.status_code == 200, ticket.text
+    data = ticket.json()
+    storage.simulate_upload(data["upload_url"], size_bytes, content_type)
+    if complete is None:
+        complete = {"width": 1600, "height": 1067} if content_type.startswith("image/") else {}
+    done = await client.post(
+        f"/invitations/{invitation_id}/media/{data['media_id']}/complete",
+        json=complete,
+        headers=auth,
+    )
+    assert done.status_code == 200, done.text
+    return done.json()
