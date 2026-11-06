@@ -5,7 +5,7 @@ from fastapi import APIRouter, Cookie, Header, Response, status
 from app.core.config import settings
 from app.core.deps import CurrentUser, DbSession
 from app.modules.auth import service
-from app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserOut
+from app.modules.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 
 router = APIRouter(tags=["auth"])
 
@@ -45,7 +45,7 @@ def _token_response(response: Response, result: service.AuthResult) -> TokenResp
     return TokenResponse(
         access_token=result.access_token,
         expires_in=result.expires_in,
-        user=UserOut.model_validate(result.user),
+        user=UserResponse.model_validate(result.user),
     )
 
 
@@ -82,6 +82,6 @@ async def logout(response: Response, db: DbSession, refresh_token: RefreshCookie
     _clear_refresh_cookie(response)
 
 
-@router.get("/me", response_model=UserOut)
-async def me(user: CurrentUser) -> UserOut:
-    return UserOut.model_validate(user)
+@router.get("/me", response_model=UserResponse)
+async def me(user: CurrentUser) -> UserResponse:
+    return UserResponse.model_validate(user)

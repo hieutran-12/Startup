@@ -1,7 +1,7 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`. 2026-11-06: kiểu `Email`, `Password` cho auth.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
@@ -21,6 +21,8 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `SingleLine(n)` / `RequiredSingleLine(n)`: NFC, trim, gộp dấu cách Unicode (kể cả NBSP) thành một; Cc, U+2028/U+2029 → `invalid_characters`
 - `MultiLine(n)` / `RequiredMultiLine(n)`: NFC, trim, `\r\n`/`\r` → `\n`, tối đa 2 dòng trống liền nhau (dòng chỉ có khoảng trắng tính là trống); cho `\n`, `\t`, ký tự Cc khác → `invalid_characters`
 - `Digits(min, max)` / `RequiredDigits(min, max)`: NFC, trim, chỉ `0-9`; sai ký tự hoặc độ dài → `invalid_format`
+- `Email` (bắt buộc): NFC, trim, chữ thường; rỗng → `required`, quá 320 → `too_long`, cú pháp sai (`email-validator`, không tra DNS) → `invalid_format`. Lưu chuỗi đã hạ chữ thường, không lấy bản `normalized` của thư viện
+- `Password(min, max)` (bắt buộc): chỉ NFC, không trim; rỗng → `required`, ngắn → `out_of_range`, dài → `too_long` (quy tắc phụ ở `auth.md`)
 - Bản không bắt buộc: rỗng sau chuẩn hóa → `None`. Bản bắt buộc: rỗng, null hoặc thiếu → `required`. Độ dài đếm sau chuẩn hóa → `too_long`
 - `LocalTime`: đúng `HH:MM` 24 giờ (không trim, không giây) → `datetime.time`, JSON trả `"HH:MM"`
 - `IsoDate`: đúng `YYYY-MM-DD` → `date`; `Uuid`: UUID chữ thường 36 ký tự → `uuid.UUID`. Sai → `invalid_format`
@@ -63,4 +65,4 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - Union không nullable (`A | B`) sẽ thêm tên nhánh vào `loc`; `_field_path` chưa xử lý trường hợp này.
 - Strict ở chế độ Python không nhận số JSON cho `Decimal`: tọa độ dùng `Latitude`/`Longitude` (PlainValidator). Phần trăm (NUMERIC(5,2)) chưa có kiểu, chưa trường nào dùng.
 - `json.loads` của Starlette nhận `NaN`, `Infinity`: kiểu số thập phân phải tự chặn số không hữu hạn.
-- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4), events (Bước 5), media kể cả album (Bước 7). Còn auth (chưa có bước).
+- Schema request đã chuyển sang `StrictModel`: templates (Bước 3), invitations (Bước 4), events (Bước 5), media kể cả album (Bước 7), auth (2026-11-06, `Email`, `Password`). Không còn schema request nào dùng `BaseModel` thường.

@@ -19,12 +19,14 @@ from app.core.schemas import StrictModel
 from app.core.types import (
     Choice,
     Digits,
+    Email,
     HttpUrl,
     IsoDate,
     Latitude,
     LocalTime,
     Longitude,
     MultiLine,
+    Password,
     RequiredDigits,
     RequiredMultiLine,
     RequiredSingleLine,
@@ -62,6 +64,11 @@ class Sample(StrictModel):
 
 class RequiredOnly(StrictModel):
     title: RequiredSingleLine(30)
+
+
+class Account(StrictModel):
+    email: Email
+    password: Password(8, 12)
 
 
 def parse(**data: Any) -> Sample:
@@ -452,3 +459,84 @@ def test_unknown_field_is_rejected() -> None:
     ]
     # Gửi null cho trường lạ vẫn là trường lạ, không phải required
     assert errors({"nickname": None}) == [("nickname", "unknown_field")]
+
+
+# ---------- Email, mật khẩu ----------
+
+
+def _account(**data: Any) -> Account:
+    return Account.model_validate({"email": "nam@example.com", "password": "matkhau1", **data})
+
+
+def test_email_is_trimmed_lowercased_and_nfc() -> None:
+    raw = unicodedata.normalize("NFD", "  Nguyễn.Nam@Example.COM ")
+
+    result = _account(email=raw).email
+
+    assert result == "nguyễn.nam@example.com"
+    assert unicodedata.is_normalized("NFC", result)
+
+
+@pytest.mark.parametrize("raw", ["", "   ", None])
+def test_email_empty_or_null_is_required(raw: Any) -> None:
+    assert errors({"email": raw, "password": "matkhau1"}, Account) == [("email", "required")]
+
+
+def test_email_missing_is_required() -> None:
+    assert errors({"password": "matkhau1"}, Account) == [("email", "required")]
+
+
+@pytest.mark.parametrize(
+    "raw", ["nam", "nam@", "@example.com", "nam @example.com", "nam@example", "nam@@example.com"]
+)
+def test_email_invalid_format(raw: str) -> None:
+    assert details({"email": raw, "password": "matkhau1"}, Account) == [
+        {"field": "email", "code": "invalid_format", "message": "Email không hợp lệ"}
+    ]
+
+
+@pytest.mark.parametrize("raw", [123, True, ["nam@example.com"]])
+def test_email_rejects_non_strings(raw: Any) -> None:
+    assert errors({"email": raw, "password": "matkhau1"}, Account) == [("email", "invalid_format")]
+
+
+def test_email_longer_than_320_is_too_long() -> None:
+    raw = "a" * 64 + "@" + ".".join(["b" * 63] * 4) + ".vn"
+    assert len(raw) > 320
+
+    assert details({"email": raw, "password": "matkhau1"}, Account) == [
+        {"field": "email", "code": "too_long", "message": "Tối đa 320 ký tự"}
+    ]
+
+
+def test_password_is_nfc_but_not_trimmed() -> None:
+    raw = unicodedata.normalize("NFD", " mật khẩu ")
+
+    result = _account(password=raw).password
+
+    assert result == " mật khẩu "
+    assert unicodedata.is_normalized("NFC", result)
+
+
+def test_password_length_is_counted_after_nfc() -> None:
+    # 8 ký tự NFC, 12 code point khi ở dạng NFD
+    raw = unicodedata.normalize("NFD", "mậtkhẩuu")
+    assert len(raw) > 8
+
+    assert _account(password=raw).password == "mậtkhẩuu"
+
+
+@pytest.mark.parametrize(
+    ("raw", "code", "message"),
+    [
+        ("matkhau", "out_of_range", "Tối thiểu 8 ký tự"),
+        ("matkhau123456", "too_long", "Tối đa 12 ký tự"),
+        ("", "required", "Không được để trống"),
+        (None, "required", "Không được để trống"),
+        (12345678, "invalid_format", "Phải là chuỗi"),
+    ],
+)
+def test_password_rejects_invalid_values(raw: Any, code: str, message: str) -> None:
+    assert details({"email": "nam@example.com", "password": raw}, Account) == [
+        {"field": "password", "code": code, "message": message}
+    ]

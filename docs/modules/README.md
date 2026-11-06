@@ -37,7 +37,7 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 | Module | Code | Phạm vi | Bước | File module |
 | --- | --- | --- | --- | --- |
 | core | `app/core/` (config, db, security, deps, errors, schemas, types, storage, revalidate, merge_patch, revision) | Kiểu chuẩn hóa `types.py`, `StrictModel`, định dạng lỗi chung (Bước 1); naming convention trong `db.py`; Merge Patch, ETag/If-Match (Bước 4) | 1, 2, 4 | [core.md](core.md) |
-| auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (giữ từ khung) | 2 (model giữ nguyên, không sửa code) | chưa có |
+| auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (cơ chế giữ từ khung); schema request `StrictModel`, `Email`, `Password` (2026-11-06) | 2, việc treo cùng đợt 11 | [auth.md](auth.md) |
 | templates | `app/modules/templates/`, `app/scripts/seed_templates.py` | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | [templates.md](templates.md) |
 | invitations | `app/modules/invitations/` (có `public_router`, `slugs.py`) | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish; trang public `GET /public/invitations/{slug}` (lọc side, display_name, lunar_date, media_by_id) | 2, 4, 6, 10 | [invitations.md](invitations.md) |
 | events | `app/modules/events/` | Bảng events, CRUD (`/invitations/{id}/events`), tên mặc định, thứ tự, giới hạn 10, If-Match; giữ điều kiện publish khi ghi; schema sự kiện của trang public (`lunar_date`) | 2, 5, 6, 10 | [events.md](events.md) |

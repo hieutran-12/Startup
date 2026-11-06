@@ -1,5 +1,8 @@
+import unicodedata
 from datetime import timedelta
+from typing import Any
 
+import pytest
 from httpx import AsyncClient
 
 from app.modules.auth import service as auth_service
@@ -45,11 +48,107 @@ async def test_register_duplicate_email(client: AsyncClient) -> None:
     assert resp.json()["error"]["code"] == "email_taken"
 
 
-async def test_register_rejects_short_password(client: AsyncClient) -> None:
-    resp = await client.post(
-        "/auth/register", json={"email": "a@example.com", "password": "123", "full_name": "A"}
+REGISTER_BODY = {"email": "a@example.com", "password": "matkhau123", "full_name": "A"}
+
+
+def _fields(resp) -> list[tuple[str, str]]:
+    assert resp.status_code == 422, resp.text
+    error = resp.json()["error"]
+    assert error["code"] == "validation_error"
+    return [(d["field"], d["code"]) for d in error["details"]]
+
+
+async def test_register_normalizes_full_name(client: AsyncClient) -> None:
+    raw = unicodedata.normalize("NFD", "  Nguyễn   Văn\u00a0Nam ")
+    resp = await client.post("/auth/register", json={**REGISTER_BODY, "full_name": raw})
+
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["user"]["full_name"] == "Nguyễn Văn Nam"
+
+
+@pytest.mark.parametrize(
+    ("override", "expected"),
+    [
+        ({"full_name": "Nam\nAnh"}, ("full_name", "invalid_characters")),
+        ({"full_name": "   "}, ("full_name", "required")),
+        ({"full_name": "a" * 121}, ("full_name", "too_long")),
+        ({"email": "nam@"}, ("email", "invalid_format")),
+        ({"email": ""}, ("email", "required")),
+        ({"password": "1234567"}, ("password", "out_of_range")),
+        ({"password": "a" * 129}, ("password", "too_long")),
+        ({"password": 12345678}, ("password", "invalid_format")),
+        ({"nickname": "Nam"}, ("nickname", "unknown_field")),
+    ],
+)
+async def test_register_rejects_invalid_body(
+    client: AsyncClient, override: dict[str, Any], expected: tuple[str, str]
+) -> None:
+    resp = await client.post("/auth/register", json={**REGISTER_BODY, **override})
+
+    assert _fields(resp) == [expected]
+
+
+async def test_register_requires_every_field(client: AsyncClient) -> None:
+    resp = await client.post("/auth/register", json={})
+
+    assert sorted(_fields(resp)) == [
+        ("email", "required"),
+        ("full_name", "required"),
+        ("password", "required"),
+    ]
+
+
+async def test_password_is_not_trimmed(client: AsyncClient) -> None:
+    await register_user(client, email="lan@example.com", password=" matkhau123 ")
+
+    trimmed = await client.post(
+        "/auth/login", json={"email": "lan@example.com", "password": "matkhau123"}
     )
-    assert resp.status_code == 422
+    assert trimmed.status_code == 401
+    exact = await client.post(
+        "/auth/login", json={"email": "lan@example.com", "password": " matkhau123 "}
+    )
+    assert exact.status_code == 200, exact.text
+
+
+async def test_password_nfd_and_nfc_are_the_same_password(client: AsyncClient) -> None:
+    password = "mậtkhẩu123"
+    await register_user(
+        client, email="lan@example.com", password=unicodedata.normalize("NFD", password)
+    )
+
+    resp = await client.post(
+        "/auth/login", json={"email": " LAN@example.com", "password": password}
+    )
+
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({}, [("email", "required"), ("password", "required")]),
+        ({"email": "lan@example.com", "password": ""}, [("password", "required")]),
+        ({"email": "lan", "password": "matkhau123"}, [("email", "invalid_format")]),
+        (
+            {"email": "lan@example.com", "password": "matkhau123", "remember": True},
+            [("remember", "unknown_field")],
+        ),
+    ],
+)
+async def test_login_rejects_invalid_body(
+    client: AsyncClient, body: dict[str, Any], expected: list[tuple[str, str]]
+) -> None:
+    resp = await client.post("/auth/login", json=body)
+
+    assert sorted(_fields(resp)) == expected
+
+
+async def test_openapi_uses_user_response_name(client: AsyncClient) -> None:
+    schemas = (await client.get("/openapi.json")).json()["components"]["schemas"]
+
+    assert "UserResponse" in schemas
+    assert "UserOut" not in schemas
 
 
 async def test_login(client: AsyncClient) -> None:

@@ -22,6 +22,7 @@ from functools import cache, partial
 from typing import Annotated, Any
 from urllib.parse import urlsplit
 
+from email_validator import EmailNotValidError, validate_email
 from pydantic import AfterValidator, PlainSerializer, PlainValidator, Strict, WithJsonSchema
 from pydantic_core import PydanticCustomError
 
@@ -48,6 +49,13 @@ def _required() -> PydanticCustomError:
     return PydanticCustomError("required", "Không được để trống")
 
 
+def _too_long(max_length: int) -> PydanticCustomError:
+    # Dùng loại lỗi có sẵn của Pydantic; handler đổi thành mã too_long kèm message tiếng Việt
+    return PydanticCustomError(
+        "string_too_long", "Tối đa {max_length} ký tự", {"max_length": max_length}
+    )
+
+
 def _empty_or_too_long(value: str, *, max_length: int, required: bool) -> str | None:
     """Bước 5–6 của chuẩn hóa chuỗi: rỗng thì null/required, rồi kiểm tra độ dài."""
     if not value:
@@ -55,10 +63,7 @@ def _empty_or_too_long(value: str, *, max_length: int, required: bool) -> str | 
             raise _required()
         return None
     if len(value) > max_length:
-        # Dùng loại lỗi có sẵn của Pydantic; handler đổi thành mã too_long kèm message tiếng Việt
-        raise PydanticCustomError(
-            "string_too_long", "Tối đa {max_length} ký tự", {"max_length": max_length}
-        )
+        raise _too_long(max_length)
     return value
 
 
@@ -157,6 +162,59 @@ def RequiredMultiLine(max_length: int) -> Any:
     validate = partial(_multi_line, max_length=max_length, required=True)
     return Annotated[
         str, AfterValidator(validate), _string_schema({"maxLength": max_length}, nullable=False)
+    ]
+
+
+# ---------- Email, mật khẩu ----------
+
+_EMAIL_MAX_LENGTH = 320  # VARCHAR(320), spec 02 › Kiểu dữ liệu
+
+
+def _email(value: str) -> str:
+    value = unicodedata.normalize("NFC", value).strip().lower()
+    if not value:
+        raise _required()
+    if len(value) > _EMAIL_MAX_LENGTH:
+        raise _too_long(_EMAIL_MAX_LENGTH)
+    try:
+        # Chỉ kiểm tra cú pháp, không tra DNS. Lưu đúng chuỗi đã trim và hạ chữ thường, không lấy
+        # bản `normalized` của thư viện (bản đó có thể đổi tên miền quốc tế sang dạng khác).
+        validate_email(value, check_deliverability=False)
+    except EmailNotValidError as exc:
+        raise PydanticCustomError("invalid_format", "Email không hợp lệ") from exc
+    return value
+
+
+Email = Annotated[
+    str,
+    AfterValidator(_email),
+    WithJsonSchema({"type": "string", "format": "email", "maxLength": _EMAIL_MAX_LENGTH}),
+]
+"""Email bắt buộc: NFC, trim, chữ thường, kiểm tra định dạng (spec 02 › Kiểu dữ liệu)."""
+
+
+def _password(value: str, *, min_length: int, max_length: int) -> str:
+    # NFC để cùng một mật khẩu có dấu gõ trên máy khác nhau (NFD/NFC) cho cùng một chuỗi.
+    # Không trim: dấu cách là một phần của mật khẩu (chốt 2026-11-06, docs/modules/auth.md).
+    value = unicodedata.normalize("NFC", value)
+    if not value:
+        raise _required()
+    if len(value) < min_length:
+        # Ngắn hơn tối thiểu → out_of_range (handler đổi loại lỗi này, spec 05 không có too_short)
+        raise PydanticCustomError(
+            "string_too_short", "Tối thiểu {min_length} ký tự", {"min_length": min_length}
+        )
+    if len(value) > max_length:
+        raise _too_long(max_length)
+    return value
+
+
+def Password(min_length: int, max_length: int) -> Any:
+    """Mật khẩu bắt buộc: chỉ chuẩn hóa NFC, không trim, độ dài đếm sau NFC."""
+    validate = partial(_password, min_length=min_length, max_length=max_length)
+    schema = {"type": "string", "format": "password", "minLength": min_length}
+    return Annotated[
+        str, AfterValidator(validate), WithJsonSchema({**schema, "maxLength": max_length})
     ]
 
 
