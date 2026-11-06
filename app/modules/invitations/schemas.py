@@ -259,7 +259,7 @@ class InvitationResponse(BaseModel):
     updated_at: datetime
 
 
-class SlugAvailability(BaseModel):
+class SlugAvailabilityResponse(BaseModel):
     slug: str
     available: bool
     reason: str | None = None

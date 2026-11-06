@@ -50,6 +50,7 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `tests/conftest.py`: mỗi phiên test `DROP SCHEMA public CASCADE` trên `thiepcuoi_test` rồi `alembic upgrade head` qua `config.attributes["connection"]`; `env.py` thấy connection này thì không gọi `fileConfig`.
 - `tests/test_db_schema.py::test_migration_matches_models` chạy `compare_metadata` (tương đương `alembic check`). Autogenerate không so CHECK, nên mỗi CHECK có test riêng trên schema của migration.
 - Constraint có tên tường minh khi convention cho tên trùng (khóa ngoại kép của invitations, xem `invitations.md`).
+- Chốt Bước 2 (người dùng duyệt): giữ index của khung mà spec không nhắc tới (`ix_templates_category`, `ix_invitations_template_id`, `ix_albums_invitation_id`, `ix_media_album_id`, `ix_media_invitation_position`); không thêm CHECK/DEFAULT ngoài spec (không CHECK snake_case cho `templates.key`, `revision > 0`, `position >= 0`, `size_bytes > 0`; không unique index "1 file âm thanh"; `media.kind` không DEFAULT).
 
 ## Ánh xạ lỗi Pydantic → mã spec (`errors.py`)
 - Lỗi raise thẳng mã spec (`types.py`, `field_error`): giữ nguyên mã và message, kể cả khi input null (sửa ở Bước 4)

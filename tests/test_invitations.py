@@ -952,6 +952,9 @@ async def test_openapi_has_invitation_schemas(client: AsyncClient) -> None:
     assert {"InvitationCreate", "InvitationUpdate", "InvitationContent"} <= set(schemas)
     assert any(name.startswith("InvitationResponse") for name in schemas)
     assert not any(name.startswith("InvitationOut") for name in schemas)
+    # Bước 11: response của slug-availability theo quy ước hậu tố Response
+    assert "SlugAvailabilityResponse" in schemas
+    assert "SlugAvailability" not in schemas
     assert set(schemas["InvitationUpdate"]["properties"]) == {
         "title",
         "slug",

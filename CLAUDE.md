@@ -90,7 +90,7 @@ Khi làm một bước kế hoạch: chỉ làm bước đó; viết test theo "
 
 Sau khi code xong một bước:
 1. Chạy `uv run pytest` và `uv run ruff check .`, báo kết quả.
-2. Tạo hoặc cập nhật `docs/modules/<tên>.md` cho module vừa làm hoặc vừa sửa.
+2. Tạo hoặc cập nhật `docs/modules/<tên>.md` cho module vừa làm hoặc vừa sửa. Đổi endpoint hay luồng FE thì sửa `README.md` (`tests/test_readme.py` so bảng API với OpenAPI).
 3. Cập nhật `docs/progress.md`.
 4. CLAUDE.md thiếu hoặc sai (lệnh, quy ước, module mới trong mục lục) thì sửa, giữ dưới 100 dòng; chi tiết thuộc module thì ghi vào file module.
 5. Commit, thông điệp nêu rõ bước và module.

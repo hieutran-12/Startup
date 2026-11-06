@@ -5,7 +5,7 @@ Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge
 
 ## File code chính
 - `models.py`: `Invitation`, `InvitationStatus`, `MEDIA_REFERENCE_COLUMNS`, khóa ngoại kép tới media (Bước 2)
-- `schemas.py`: content v1 (`InvitationContent`, `Couple`, `Person`, `Parent`, `Messages`, `LoveStoryItem`, `Gift`, `Appearance`, `BirthOrder`, `RecipientSide`), `Slug`/`OptionalSlug`, `InvitationCreate`, `InvitationUpdate`, `InvitationResponse` (Bước 4). `SlugAvailability` từ khung. Trang public (Bước 10): `PublicInvitationResponse`, `PublicAlbumResponse`, `GalleryItemResponse`, `PublicMediaResponse` (sự kiện: `events.schemas.PublicEventResponse`)
+- `schemas.py`: content v1 (`InvitationContent`, `Couple`, `Person`, `Parent`, `Messages`, `LoveStoryItem`, `Gift`, `Appearance`, `BirthOrder`, `RecipientSide`), `Slug`/`OptionalSlug`, `InvitationCreate`, `InvitationUpdate`, `InvitationResponse` (Bước 4). `SlugAvailabilityResponse` (từ khung, đổi tên từ `SlugAvailability` ở Bước 11; JSON không đổi). Trang public (Bước 10): `PublicInvitationResponse`, `PublicAlbumResponse`, `GalleryItemResponse`, `PublicMediaResponse` (sự kiện: `events.schemas.PublicEventResponse`)
 - `service.py`, `router.py`: viết lại ở Bước 4; điều kiện publish ở Bước 6; `get_public` ở Bước 10. `slugs.py`, `deps.py` (`OwnedInvitation`): từ khung
 
 ## API công khai

@@ -17,7 +17,7 @@ from app.modules.invitations.schemas import (
     InvitationUpdate,
     PublicInvitationResponse,
     RecipientSide,
-    SlugAvailability,
+    SlugAvailabilityResponse,
 )
 
 router = APIRouter(prefix="/invitations", tags=["invitations"])
@@ -40,10 +40,10 @@ async def list_my_invitations(user: CurrentUser, db: DbSession) -> list[Invitati
 
 
 # Khai báo trước "/{invitation_id}" để không bị route đó bắt nhầm
-@router.get("/slug-availability", response_model=SlugAvailability)
+@router.get("/slug-availability", response_model=SlugAvailabilityResponse)
 async def check_slug_availability(
     user: CurrentUser, db: DbSession, slug: Annotated[str, Query(max_length=100)]
-) -> SlugAvailability:
+) -> SlugAvailabilityResponse:
     return await service.check_slug(db, slug)
 
 

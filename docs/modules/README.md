@@ -45,4 +45,4 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 | banks | `app/modules/banks/` (`banks.json`, không có `models.py`) | File tĩnh danh sách ngân hàng, `GET /banks`; invitations gọi `is_known_bin` để kiểm tra `gifts[].bank_bin` | 8 | [banks.md](banks.md) |
 | lunar | `app/core/lunar.py` | Âm lịch Việt Nam UTC+7: `to_lunar(date) -> LunarDate`, `year_name`; dùng cho `lunar_date` của sự kiện ở trang public (Bước 10) | 9, 10 | [lunar.md](lunar.md) |
 
-Bước 11 (README, xoá code cũ) chạm tới mọi module: cập nhật các file module bị ảnh hưởng.
+Bước 11 (2026-11-06): viết lại `README.md` theo spec (test `tests/test_readme.py` giữ bảng API khớp OpenAPI); đổi tên `SlugAvailability` (invitations). Không còn code chết trong `app/` (đã rà bằng vulture).

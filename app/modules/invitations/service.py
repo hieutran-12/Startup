@@ -39,7 +39,7 @@ from app.modules.invitations.schemas import (
     PublicInvitationResponse,
     PublicMediaResponse,
     RecipientSide,
-    SlugAvailability,
+    SlugAvailabilityResponse,
     appearance_options,
 )
 from app.modules.invitations.slugs import slug_error, slugify, with_random_suffix
@@ -139,13 +139,15 @@ async def is_slug_available(
     return await db.scalar(stmt) is None
 
 
-async def check_slug(db: AsyncSession, raw_slug: str) -> SlugAvailability:
+async def check_slug(db: AsyncSession, raw_slug: str) -> SlugAvailabilityResponse:
     slug = raw_slug.strip().lower()
     if reason := slug_error(slug):
-        return SlugAvailability(slug=slug, available=False, reason=reason)
+        return SlugAvailabilityResponse(slug=slug, available=False, reason=reason)
     if not await is_slug_available(db, slug):
-        return SlugAvailability(slug=slug, available=False, reason="Đường dẫn đã có người dùng")
-    return SlugAvailability(slug=slug, available=True)
+        return SlugAvailabilityResponse(
+            slug=slug, available=False, reason="Đường dẫn đã có người dùng"
+        )
+    return SlugAvailabilityResponse(slug=slug, available=True)
 
 
 def _display_name(content: InvitationContent, side: str) -> str | None:

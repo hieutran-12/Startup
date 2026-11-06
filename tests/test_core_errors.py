@@ -50,7 +50,7 @@ def build_app() -> FastAPI:
 
     @app.get("/business-error")
     async def business_error() -> None:
-        raise bad_request("missing_couple_names", "Cần nhập tên cô dâu và chú rể")
+        raise bad_request("sample_rule_broken", "Vi phạm quy tắc mẫu")
 
     @app.get("/business-error-with-details")
     async def business_error_with_details() -> None:
@@ -235,8 +235,8 @@ async def test_app_error_has_empty_details(sample_client: AsyncClient) -> None:
     assert resp.status_code == 400
     assert resp.json() == {
         "error": {
-            "code": "missing_couple_names",
-            "message": "Cần nhập tên cô dâu và chú rể",
+            "code": "sample_rule_broken",
+            "message": "Vi phạm quy tắc mẫu",
             "details": [],
         }
     }

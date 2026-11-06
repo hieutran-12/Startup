@@ -286,9 +286,7 @@ async def test_without_side_returns_every_event_and_gift(client: AsyncClient, pu
     assert body["content"]["gifts"] == [GROOM_GIFT, BRIDE_GIFT, GROOM_GIFT_2]
 
 
-async def test_side_without_gifts_of_that_side(
-    client: AsyncClient, auth, published
-) -> None:
+async def test_side_without_gifts_of_that_side(client: AsyncClient, auth, published) -> None:
     inv = published["invitation"]
     patched = await client.patch(
         f"/invitations/{inv['id']}",
@@ -402,9 +400,7 @@ async def test_lunar_date_is_null_without_event_date(
 # ---------- Content ----------
 
 
-async def test_content_is_stored_content_except_gifts(
-    client: AsyncClient, auth, published
-) -> None:
+async def test_content_is_stored_content_except_gifts(client: AsyncClient, auth, published) -> None:
     inv_id = published["invitation"]["id"]
     stored = (await client.get(f"/invitations/{inv_id}", headers=auth)).json()["content"]
     assert (await _public_ok(client))["content"] == stored
@@ -467,9 +463,7 @@ async def test_gallery_is_not_cut_by_max_gallery_images(
     assert len((await _public_ok(client))["gallery"]) == 2
 
 
-async def test_gallery_follows_reorder(
-    client: AsyncClient, auth, published
-) -> None:
+async def test_gallery_follows_reorder(client: AsyncClient, auth, published) -> None:
     image_a, image_b = published["image_a"], published["image_b"]
     inv_id = published["invitation"]["id"]
     order = await client.put(
