@@ -12,7 +12,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 3 | Manifest template, seed | Xong 2026-11-06, đã duyệt: 275/275 test qua (80 mới), ruff sạch; `docs/modules/templates.md` |
 | 4 | Content v1, tạo/sửa thiệp, revision | Xong 2026-11-06, đã duyệt: 408/408 test qua (133 mới), ruff sạch; `docs/modules/invitations.md`, `core.md` |
 | 5 | Module events | Xong 2026-11-06, đã duyệt: 543/543 test qua (135 mới), ruff sạch; `docs/modules/events.md`, `core.md` |
-| 6 | Publish, breaks_published_invitation | Xong 2026-11-06, chờ nghiệm thu: 582/582 test qua (39 mới), ruff sạch; `docs/modules/invitations.md`, `events.md` |
+| 6 | Publish, breaks_published_invitation | Xong 2026-11-06, đã duyệt: 582/582 test qua (39 mới), ruff sạch; `docs/modules/invitations.md`, `events.md` |
 | 7 | Media: kind, âm thanh, dọn tham chiếu | Chưa bắt đầu |
 | 8 | Danh sách ngân hàng, GET /banks | Chưa bắt đầu |
 | 9 | Âm lịch | Chưa bắt đầu |
