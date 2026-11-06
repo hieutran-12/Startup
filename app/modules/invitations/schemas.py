@@ -2,9 +2,10 @@
 
 Content v1 (spec 03 › Nội dung thiệp) là object đầy đủ: nhóm object luôn có mặt, văn bản không bắt
 buộc là null, danh sách là [], boolean mặc định false (spec 02 › NULL, rỗng và mặc định).
-`appearance` được kiểm tra theo manifest của template khi validate với
-`context={"manifest": TemplateManifest}`; không có context (đọc content đã lưu để trả response)
-thì chỉ kiểm tra cấu trúc.
+Validate có context là kiểm tra content của request: `appearance` theo manifest của template
+(`context={"manifest": TemplateManifest}`), `gifts[].bank_bin` theo danh sách ngân hàng (Bước 8).
+Không có context (đọc content đã lưu để trả response) thì chỉ kiểm tra cấu trúc, nên BIN đã bị bỏ
+khỏi danh sách vẫn đọc được.
 """
 
 import unicodedata
@@ -21,6 +22,7 @@ from pydantic import (
     ValidationError,
     ValidationInfo,
     WithJsonSchema,
+    field_validator,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
@@ -34,6 +36,7 @@ from app.core.types import (
     SingleLine,
     Uuid,
 )
+from app.modules.banks.service import is_known_bin
 from app.modules.invitations.slugs import (
     SLUG_MAX_LENGTH,
     SLUG_MIN_LENGTH,
@@ -103,9 +106,17 @@ class LoveStoryItem(StrictModel):
 
 class Gift(StrictModel):
     recipient_side: Choice(RecipientSide)
-    bank_bin: RequiredDigits(6, 6)  # có trong danh sách ngân hàng: Bước 8
-    account_number: RequiredDigits(6, 19)
+    bank_bin: RequiredDigits(6, 6)  # có trong danh sách ngân hàng (GET /banks)
+    account_number: RequiredDigits(6, 19)  # giao diện bỏ khoảng trắng, dấu chấm trước khi gửi
     account_holder: RequiredSingleLine(100)
+
+    @field_validator("bank_bin")
+    @classmethod
+    def _bank_in_list(cls, value: str, info: ValidationInfo) -> str:
+        # Chỉ chạy khi đúng dạng 6 chữ số; chỉ kiểm tra content của request (có context)
+        if info.context is not None and not is_known_bin(value):
+            raise PydanticCustomError("invalid_choice", "Không có ngân hàng với mã BIN này")
+        return value
 
 
 def appearance_options(manifest: TemplateManifest) -> dict[str, set[str]]:

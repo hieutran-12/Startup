@@ -365,6 +365,22 @@ def test_gift_field_rules(field: str, value: Any, code: str) -> None:
     assert _errors(_content(gifts=[_gift(**{field: value})])) == [(f"gifts[0].{field}", code)]
 
 
+def test_gift_bank_bin_must_be_in_bank_list() -> None:
+    # Bước 8: BIN đúng dạng nhưng không có trong danh sách ngân hàng của hệ thống
+    data = _content(gifts=[_gift(), _gift(bank_bin="123456")])
+    assert _errors(data) == [("gifts[1].bank_bin", "invalid_choice")]
+    # Sai dạng thì chỉ báo invalid_format, không báo thêm invalid_choice
+    assert _errors(_content(gifts=[_gift(bank_bin="12345")])) == [
+        ("gifts[0].bank_bin", "invalid_format")
+    ]
+
+
+def test_bank_list_is_not_checked_without_context() -> None:
+    # Đọc content đã lưu (response, trang public): BIN đã bị bỏ khỏi danh sách vẫn đọc được
+    content = _validate(_content(gifts=[_gift(bank_bin="123456")]), manifest=None)
+    assert content.gifts[0].bank_bin == "123456"
+
+
 def test_gift_digits_keep_leading_zero_and_are_trimmed() -> None:
     gift = _validate(
         _content(gifts=[_gift(bank_bin=" 970436 ", account_number="000123456789")])
