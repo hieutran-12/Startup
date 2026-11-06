@@ -10,7 +10,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 1 | Tầng chuẩn hóa, base model, lỗi 422 | Xong 2026-11-05, đã duyệt: 143/143 test qua (115 mới), ruff sạch; `docs/modules/core.md` |
 | 2 | Model và migration 0001 | Xong 2026-11-05, đã duyệt: 195/195 test qua (52 mới), ruff sạch; `alembic check` sạch trên PG 16.15 |
 | 3 | Manifest template, seed | Xong 2026-11-06, đã duyệt: 275/275 test qua (80 mới), ruff sạch; `docs/modules/templates.md` |
-| 4 | Content v1, tạo/sửa thiệp, revision | Xong 2026-11-06, chờ nghiệm thu: 408/408 test qua (133 mới), ruff sạch; `docs/modules/invitations.md`, `core.md` |
+| 4 | Content v1, tạo/sửa thiệp, revision | Xong 2026-11-06, đã duyệt: 408/408 test qua (133 mới), ruff sạch; `docs/modules/invitations.md`, `core.md` |
 | 5 | Module events | Chưa bắt đầu |
 | 6 | Publish, breaks_published_invitation | Chưa bắt đầu |
 | 7 | Media: kind, âm thanh, dọn tham chiếu | Chưa bắt đầu |
@@ -35,7 +35,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 
 ## Quyết định mới
 
-- 2026-11-06 (Bước 4, người dùng duyệt 9 đề xuất): POST nhận content dạng Merge Patch; null cho nhóm object → `required`; lỗi manifest/tham chiếu media → 422; 409 trả revision qua `ETag`, If-Match chỉ khớp đúng `"<revision>"`; revision chỉ tăng khi có thay đổi; đổi template: chỉnh rồi gộp rồi kiểm tra chặt; month không year → lỗi tại `year`; `primary_event_date` làm ngay. Chi tiết: `docs/modules/invitations.md`.
+- 2026-11-06 (Bước 4, người dùng duyệt 9 đề xuất): POST nhận content dạng Merge Patch; null cho nhóm object → `required`; lỗi manifest/tham chiếu media → 422; 409 trả revision qua `ETag`, If-Match chỉ khớp đúng `"<revision>"`; revision chỉ tăng khi có thay đổi; đổi template: chỉnh rồi gộp rồi kiểm tra chặt; month không year → lỗi tại `year`; `primary_event_date` làm ngay. Chốt khi nghiệm thu: slug rỗng lúc tạo thì tự sinh; key giao diện khớp nguyên văn; publish không cần If-Match, không tăng revision. Chi tiết: `docs/modules/invitations.md`.
 - 2026-11-06 (Bước 3, người dùng duyệt theo đề xuất): quy tắc phụ của manifest và dòng seed (không trùng, tối thiểu 1 phần tử, dạng key, màu, mã lỗi trùng `invalid_format` / ngoài danh sách `invalid_choice`, `position` 0–3, dữ liệu seed nháp): xem `docs/modules/templates.md`. Bước 4 dùng cùng mã lỗi cho `appearance.sections`.
 
 - 2026-11-05 (Bước 2, người dùng duyệt theo đề xuất):
