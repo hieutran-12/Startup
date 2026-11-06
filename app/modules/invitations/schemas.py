@@ -37,6 +37,7 @@ from app.core.types import (
     Uuid,
 )
 from app.modules.banks.service import is_known_bin
+from app.modules.events.schemas import PublicEventResponse
 from app.modules.invitations.slugs import (
     SLUG_MAX_LENGTH,
     SLUG_MIN_LENGTH,
@@ -264,26 +265,50 @@ class SlugAvailability(BaseModel):
     reason: str | None = None
 
 
-# Response public giữ dạng khung, đổi ở Bước 10
-class PublicAlbum(BaseModel):
+# ---------- Trang public (spec 05 › Response của trang public) ----------
+
+
+class PublicAlbumResponse(BaseModel):
     id: uuid.UUID
     title: str
     position: int
 
 
-class PublicMedia(BaseModel):
-    id: uuid.UUID
+class GalleryItemResponse(BaseModel):
+    media_id: uuid.UUID = Field(description="Tra URL trong media_by_id")
     album_id: uuid.UUID | None
+
+
+class PublicMediaResponse(BaseModel):
+    kind: str = Field(description="image hoặc audio")
     url: str
-    width: int | None
-    height: int | None
+    width: int | None = Field(description="null với file âm thanh")
+    height: int | None = Field(description="null với file âm thanh")
 
 
-class PublicInvitationOut(BaseModel):
+class PublicInvitationResponse(BaseModel):
+    """Không có owner_id, status, revision. Mọi tham chiếu file là ID, tra URL trong media_by_id."""
+
     slug: str
     template_key: str
-    content: dict[str, Any]
-    published_at: datetime | None
+    side: str | None = Field(description="groom hoặc bride theo tham số ?side=; null khi không gửi")
+    content_schema_version: int
+    content: InvitationContent = Field(
+        description="Content đã lưu; riêng gifts chỉ còn tài khoản của bên `side` (khi có side)"
+    )
+    cover_media_id: uuid.UUID | None
+    groom_photo_media_id: uuid.UUID | None
+    bride_photo_media_id: uuid.UUID | None
+    music_media_id: uuid.UUID | None
+    events: list[PublicEventResponse] = Field(
+        description="Theo thứ tự hiển thị; có side thì chỉ sự kiện của bên đó và của cả hai bên"
+    )
+    albums: list[PublicAlbumResponse]
+    gallery: list[GalleryItemResponse] = Field(
+        description="Mọi ảnh ready theo thứ tự thư viện; template tự giới hạn max_gallery_images"
+    )
+    media_by_id: dict[uuid.UUID, PublicMediaResponse] = Field(
+        description="Mọi file ready của thiệp (ảnh và âm thanh)"
+    )
+    published_at: datetime
     updated_at: datetime
-    albums: list[PublicAlbum]
-    media: list[PublicMedia]

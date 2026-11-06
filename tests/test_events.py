@@ -16,8 +16,7 @@ from httpx import AsyncClient, Response
 
 from app.core.config import settings
 from app.modules.events import router as events_router
-from app.modules.events.models import EventType, HostSide
-from app.modules.events.service import default_event_name
+from app.modules.events.models import EventType, HostSide, default_event_name
 
 RECEPTION = {"event_type": "reception", "host_side": "both"}
 

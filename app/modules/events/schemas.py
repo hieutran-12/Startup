@@ -9,9 +9,10 @@ import uuid
 from datetime import date, datetime
 from typing import Self
 
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, Field, ValidationError, computed_field, model_validator
 from pydantic_core import InitErrorDetails
 
+from app.core.lunar import to_lunar
 from app.core.schemas import StrictModel, field_error
 from app.core.types import (
     Choice,
@@ -23,7 +24,12 @@ from app.core.types import (
     SingleLine,
     Timezone,
 )
-from app.modules.events.models import DEFAULT_TIMEZONE, EventType, HostSide
+from app.modules.events.models import (
+    DEFAULT_TIMEZONE,
+    EventType,
+    HostSide,
+    default_event_name,
+)
 
 _EVENT_NAME_DESCRIPTION = "Tên hiển thị tùy chỉnh; null thì dùng tên mặc định theo loại lễ và bên"
 
@@ -98,12 +104,17 @@ EVENT_FIELDS = tuple(EventCreate.model_fields)
 """Các cột client ghi được (không gồm id, invitation_id, position, thời điểm)."""
 
 
-class EventResponse(BaseModel):
+# ---------- Response ----------
+# Dựng bằng `model_validate(event, from_attributes=True)`; display_name, lunar_date tính khi trả về.
+
+
+class _EventColumns(BaseModel):
+    """Cột của bảng events trừ invitation_id, position; thêm display_name."""
+
     id: uuid.UUID
     event_type: str
     host_side: str
     event_name: str | None
-    display_name: str = Field(description="event_name, hoặc tên mặc định theo loại lễ và bên")
     event_date: date | None
     start_time: LocalTime | None
     end_time: LocalTime | None
@@ -113,6 +124,38 @@ class EventResponse(BaseModel):
     latitude: Latitude | None
     longitude: Longitude | None
     maps_url: str | None
-    position: int = Field(description="Thứ tự tạo, chỉ dùng khi trùng cả ngày và giờ")
     created_at: datetime
     updated_at: datetime
+
+    @computed_field(description="event_name, hoặc tên mặc định theo loại lễ và bên")
+    @property
+    def display_name(self) -> str:
+        name = self.event_name or default_event_name(self.event_type, self.host_side)
+        # CHECK của bảng events bảo đảm luôn có một trong hai
+        assert name is not None, f"Sự kiện {self.id} không có tên hiển thị"
+        return name
+
+
+class EventResponse(_EventColumns):
+    """Sự kiện ở dashboard (GET/POST/PATCH .../events)."""
+
+    position: int = Field(description="Thứ tự tạo, chỉ dùng khi trùng cả ngày và giờ")
+
+
+class LunarDateResponse(BaseModel):
+    day: int = Field(description="1–30")
+    month: int = Field(description="1–12; tháng nhuận mang số của tháng nó lặp lại")
+    year: int = Field(description="Năm âm lịch: năm dương có Tết mở đầu năm âm đó")
+    is_leap_month: bool
+    year_name: str = Field(description='Can chi của năm, ví dụ "Bính Ngọ"')
+
+
+class PublicEventResponse(_EventColumns):
+    """Sự kiện ở trang public (spec 05 › Response của trang public)."""
+
+    @computed_field(description="Âm lịch Việt Nam (UTC+7) của event_date; null khi chưa có ngày")
+    @property
+    def lunar_date(self) -> LunarDateResponse | None:
+        if self.event_date is None:
+            return None
+        return LunarDateResponse.model_validate(to_lunar(self.event_date), from_attributes=True)

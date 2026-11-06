@@ -17,7 +17,7 @@ File của thiệp (bảng `media`, `kind` ảnh hoặc âm thanh) và album (b�
 
 ## Phụ thuộc
 - Dùng: core (storage, revalidate, `etag`, `StrictModel`, types), invitations (`OwnedInvitation`, `Invitation`, `MEDIA_REFERENCE_COLUMNS`, `service.release_media`)
-- Được dùng bởi: invitations (khóa ngoại kép `*_media_id`, kiểm tra tham chiếu, trang public, xoá thiệp)
+- Được dùng bởi: invitations (khóa ngoại kép `*_media_id`, kiểm tra tham chiếu, xoá thiệp; trang public đọc `Media`, `Album`: `gallery`, `albums`, `media_by_id`)
 
 ## Quy tắc spec đang áp dụng
 - Cột, `kind`, loại file, giới hạn → 03 › media; albums → 03 › Bảng giữ nguyên. `kind` suy ra từ `content_type` → 05
@@ -33,7 +33,7 @@ File của thiệp (bảng `media`, `kind` ảnh hoặc âm thanh) và album (b�
 6. Xoá file: khóa dòng thiệp, không cần If-Match, 204 có `ETag` = revision sau khi xoá; không kiểm tra `breaks_published_invitation`; thiệp đã publish thì revalidate (như khung).
 7. Mọi schema request (cả album) là `StrictModel`: `filename` `RequiredSingleLine(255)`, `title` `RequiredSingleLine(120)`, `album_id` `Uuid`. PATCH album: không gửi thì giữ, null → `required`. `MediaOut`/`AlbumOut` → `*Response`; giữ tên `*Request` cho body của hành động không phải CRUD.
 8. Settings: `max_image_bytes`, `max_audio_bytes`, `max_images_per_invitation`, `max_audio_per_invitation` (thay `max_upload_bytes`, `max_media_per_invitation`, `allowed_image_types`). Đuôi file: `mp3` (`audio/mpeg`, `audio/mp3`), `m4a` (`audio/mp4`, `audio/x-m4a`).
-9. Response public dạng khung: danh sách `media` chỉ có ảnh (tới Bước 10).
+9. Response public dạng khung: danh sách `media` chỉ có ảnh (Bước 10 thay bằng `gallery` chỉ có ảnh và `media_by_id` có mọi file ready: `invitations.md`).
 
 ## Thứ tự kiểm tra
 - upload-url: 401 → 404 thiệp (dependency `OwnedInvitation`, chạy trước validate body) → 422 body (loại, dung lượng, âm thanh + album) → khóa dòng thiệp → 404 `album_not_found` → 400 `media_limit` → ghi.

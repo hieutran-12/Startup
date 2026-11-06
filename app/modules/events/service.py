@@ -19,62 +19,17 @@ from app.core.config import settings
 from app.core.errors import bad_request, error_details, not_found, validation_error
 from app.core.revision import check_revision
 from app.modules.auth.models import User
-from app.modules.events.models import Event, EventType, HostSide, display_order
+from app.modules.events.models import Event, display_order
 from app.modules.events.schemas import EVENT_FIELDS, EventCreate, EventResponse, EventUpdate
 from app.modules.invitations import service as invitation_service
 from app.modules.invitations.models import Invitation
 
-# ---------- Tên mặc định ----------
-
-# Bảng tên mặc định khi event_name là null (spec 04 › Sự kiện). Thiếu cặp nào là cặp đó không có
-# tên mặc định: family_ceremony + both không hợp lệ, other bắt buộc có event_name.
-_DEFAULT_NAMES: dict[tuple[EventType, HostSide], str] = {
-    (EventType.ENGAGEMENT, HostSide.GROOM): "Lễ ăn hỏi",
-    (EventType.ENGAGEMENT, HostSide.BRIDE): "Lễ ăn hỏi",
-    (EventType.ENGAGEMENT, HostSide.BOTH): "Lễ ăn hỏi",
-    (EventType.FAMILY_CEREMONY, HostSide.GROOM): "Lễ thành hôn",
-    (EventType.FAMILY_CEREMONY, HostSide.BRIDE): "Lễ vu quy",
-    (EventType.RELIGIOUS_CEREMONY, HostSide.GROOM): "Lễ cưới",
-    (EventType.RELIGIOUS_CEREMONY, HostSide.BRIDE): "Lễ cưới",
-    (EventType.RELIGIOUS_CEREMONY, HostSide.BOTH): "Lễ cưới",
-    (EventType.RECEPTION, HostSide.GROOM): "Tiệc cưới nhà trai",
-    (EventType.RECEPTION, HostSide.BRIDE): "Tiệc cưới nhà gái",
-    (EventType.RECEPTION, HostSide.BOTH): "Tiệc cưới",
-}
-
-
-def default_event_name(event_type: EventType, host_side: HostSide) -> str | None:
-    """Tên mặc định theo loại lễ và bên; None khi cặp này không có tên mặc định."""
-    return _DEFAULT_NAMES.get((EventType(event_type), HostSide(host_side)))
-
-
-def display_name(event: Event) -> str:
-    """event_name, hoặc tên mặc định. CHECK của bảng events bảo đảm luôn có một trong hai."""
-    name = event.event_name or default_event_name(event.event_type, event.host_side)
-    assert name is not None, f"Sự kiện {event.id} không có tên hiển thị"
-    return name
+# ---------- Response ----------
 
 
 def to_response(event: Event) -> EventResponse:
-    return EventResponse(
-        id=event.id,
-        event_type=event.event_type,
-        host_side=event.host_side,
-        event_name=event.event_name,
-        display_name=display_name(event),
-        event_date=event.event_date,
-        start_time=event.start_time,
-        end_time=event.end_time,
-        timezone=event.timezone,
-        venue_name=event.venue_name,
-        address=event.address,
-        latitude=event.latitude,
-        longitude=event.longitude,
-        maps_url=event.maps_url,
-        position=event.position,
-        created_at=event.created_at,
-        updated_at=event.updated_at,
-    )
+    """`display_name` tính trong schema (tên mặc định: `models.default_event_name`)."""
+    return EventResponse.model_validate(event, from_attributes=True)
 
 
 # ---------- Đọc ----------

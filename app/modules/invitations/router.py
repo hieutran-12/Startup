@@ -8,13 +8,15 @@ from app.core.deps import CurrentUser, DbSession
 from app.core.revalidate import revalidate_invitation
 from app.core.revision import IfMatch, etag
 from app.core.storage import Storage, get_storage
+from app.core.types import Choice
 from app.modules.invitations import service
 from app.modules.invitations.models import Invitation
 from app.modules.invitations.schemas import (
     InvitationCreate,
     InvitationResponse,
     InvitationUpdate,
-    PublicInvitationOut,
+    PublicInvitationResponse,
+    RecipientSide,
     SlugAvailability,
 )
 
@@ -119,11 +121,22 @@ async def delete_invitation(
         background.add_task(revalidate_invitation, slug)
 
 
-@public_router.get("/invitations/{slug}", response_model=PublicInvitationOut)
+_SIDE_DESCRIPTION = (
+    "groom (link nhà trai) hoặc bride (link nhà gái): chỉ trả sự kiện của bên đó và của cả "
+    "hai bên, cùng tài khoản mừng cưới của bên đó. Không gửi thì trả tất cả"
+)
+
+
+@public_router.get("/invitations/{slug}", response_model=PublicInvitationResponse)
 async def get_public_invitation(
-    slug: str, response: Response, db: DbSession, storage: StorageDep
-) -> PublicInvitationOut:
-    result = await service.get_public(db, slug, storage)
+    slug: str,
+    response: Response,
+    db: DbSession,
+    storage: StorageDep,
+    side: Annotated[Choice(RecipientSide) | None, Query(description=_SIDE_DESCRIPTION)] = None,
+) -> PublicInvitationResponse:
+    """Trang public theo slug (spec 05 › Response của trang public). `side` sai giá trị → 422."""
+    result = await service.get_public(db, slug, side, storage)
     # Next.js/CDN cache ngắn hạn; nội dung mới được đẩy bằng revalidate on-demand
     response.headers["Cache-Control"] = (
         "public, max-age=60, s-maxage=300, stale-while-revalidate=600"

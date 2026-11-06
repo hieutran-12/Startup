@@ -77,11 +77,34 @@ class Event(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     position: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
 
 
+# Tên mặc định và thứ tự hiển thị đặt ở models để schemas và invitations (điều kiện publish, trang
+# public) dùng được mà không import events.service (service đó import invitations.service).
+
+# Bảng tên mặc định khi event_name là null (spec 04 › Sự kiện). Thiếu cặp nào là cặp đó không có
+# tên mặc định: family_ceremony + both không hợp lệ, other bắt buộc có event_name.
+_DEFAULT_NAMES: dict[tuple[EventType, HostSide], str] = {
+    (EventType.ENGAGEMENT, HostSide.GROOM): "Lễ ăn hỏi",
+    (EventType.ENGAGEMENT, HostSide.BRIDE): "Lễ ăn hỏi",
+    (EventType.ENGAGEMENT, HostSide.BOTH): "Lễ ăn hỏi",
+    (EventType.FAMILY_CEREMONY, HostSide.GROOM): "Lễ thành hôn",
+    (EventType.FAMILY_CEREMONY, HostSide.BRIDE): "Lễ vu quy",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.GROOM): "Lễ cưới",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.BRIDE): "Lễ cưới",
+    (EventType.RELIGIOUS_CEREMONY, HostSide.BOTH): "Lễ cưới",
+    (EventType.RECEPTION, HostSide.GROOM): "Tiệc cưới nhà trai",
+    (EventType.RECEPTION, HostSide.BRIDE): "Tiệc cưới nhà gái",
+    (EventType.RECEPTION, HostSide.BOTH): "Tiệc cưới",
+}
+
+
+def default_event_name(event_type: str, host_side: str) -> str | None:
+    """Tên mặc định theo loại lễ và bên; None khi cặp này không có tên mặc định."""
+    return _DEFAULT_NAMES.get((EventType(event_type), HostSide(host_side)))
+
+
 def display_order() -> tuple[Any, ...]:
     """Thứ tự hiển thị (spec 04 › Sự kiện): ngày, rồi giờ bắt đầu, rồi position; chưa có ngày
     (hoặc chưa có giờ trong ngày) xếp cuối.
-
-    Đặt ở models để invitations (điều kiện publish) dùng được mà không import events.service.
     """
     return (
         Event.event_date.asc().nulls_last(),

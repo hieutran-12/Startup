@@ -1,23 +1,25 @@
 # events
 
 ## Mục đích
-Sự kiện của thiệp (bảng `events`), mỗi sự kiện có `host_side`. Bước 2: model. Bước 5: CRUD, tên mặc định, thứ tự hiển thị, giới hạn 10, If-Match và revision dùng chung với thiệp. Bước 6: thiệp đã publish phải giữ đủ điều kiện publish sau mỗi lần ghi sự kiện.
+Sự kiện của thiệp (bảng `events`), mỗi sự kiện có `host_side`. Bước 2: model. Bước 5: CRUD, tên mặc định, thứ tự hiển thị, giới hạn 10, If-Match và revision dùng chung với thiệp. Bước 6: thiệp đã publish phải giữ đủ điều kiện publish sau mỗi lần ghi sự kiện. Bước 10: schema sự kiện của trang public (`lunar_date`).
 
 ## File code chính
-- `models.py`: `Event`, `EventType`, `HostSide`, `DEFAULT_TIMEZONE`, các CHECK (Bước 2); `display_order()` (chuyển từ service ở Bước 6 để invitations dùng mà không import vòng)
-- `schemas.py`: `EventCreate` (kèm `rule_errors`: quy tắc nhiều cột), `EventUpdate`, `EventResponse`, `EVENT_FIELDS`
-- `service.py`: `default_event_name`, `display_name`, `to_response`, `list_for_invitation`, `create`, `update`, `delete`; `_commit` (thiệp đã publish: flush rồi `check_still_publishable` trước commit)
+- `models.py`: `Event`, `EventType`, `HostSide`, `DEFAULT_TIMEZONE`, các CHECK (Bước 2); `display_order()` (Bước 6), `default_event_name` (Bước 10): chuyển từ service để schemas và invitations dùng mà không import vòng (`events.service` import `invitations.service`)
+- `schemas.py`: `EventCreate` (kèm `rule_errors`: quy tắc nhiều cột), `EventUpdate`, `EVENT_FIELDS`; `_EventColumns` (cột trừ `invitation_id`, `position`, + `display_name`) là lớp nền của `EventResponse` (+ `position`) và `PublicEventResponse` (+ `lunar_date`), `LunarDateResponse` (Bước 10)
+- `service.py`: `to_response`, `list_for_invitation`, `create`, `update`, `delete`; `_commit` (thiệp đã publish: flush rồi `check_still_publishable` trước commit)
 - `router.py`: `/invitations/{invitation_id}/events`
 
 ## API công khai
 - `GET /invitations/{id}/events`: danh sách theo thứ tự hiển thị, header `ETag` là revision hiện tại của thiệp
 - `POST /invitations/{id}/events` → 201; `PATCH .../events/{event_id}` (Merge Patch) → 200; `DELETE .../events/{event_id}` → 204. Cả ba bắt buộc `If-Match`, response có `ETag` là revision mới
-- `EventResponse`: mọi cột trừ `invitation_id`, thêm `display_name`. Chưa có `lunar_date` (Bước 9/10)
-- `default_event_name(event_type, host_side)` → tên theo bảng ở spec 04 › Sự kiện, hoặc None (`family_ceremony` + `both`, `other`). Bước 10 dùng lại cho trang public cùng `models.display_order()`
+- `EventResponse`: mọi cột trừ `invitation_id`, thêm `display_name`. Không có `lunar_date` (spec chỉ nêu ở trang public)
+- `PublicEventResponse` (trang public, invitations dùng): mọi cột trừ `invitation_id`, `position`, thêm `display_name`, `lunar_date` (`{day, month, year, is_leap_month, year_name}` từ `core.lunar.to_lunar`, null khi chưa có ngày)
+- Cả hai dựng bằng `model_validate(event, from_attributes=True)`; `display_name`, `lunar_date` là `computed_field` (tính khi trả về, `readOnly` trong OpenAPI)
+- `models.default_event_name(event_type, host_side)` → tên theo bảng ở spec 04 › Sự kiện, hoặc None (`family_ceremony` + `both`, `other`)
 
 ## Phụ thuộc
-- Dùng: core (`StrictModel`, `types`, `revision`, `errors`), invitations (`service.get_owned(for_update=True)`, `service.check_still_publishable`, `Invitation.revision`, `is_published`), auth (`User`)
-- Được dùng bởi: invitations (`primary_event_date` = `MIN(event_date)`, điều kiện publish dùng `display_order()`); Bước 10 trang public
+- Dùng: core (`StrictModel`, `types`, `revision`, `errors`, `lunar`), invitations (`service.get_owned(for_update=True)`, `service.check_still_publishable`, `Invitation.revision`, `is_published`), auth (`User`)
+- Được dùng bởi: invitations (`primary_event_date` = `MIN(event_date)`; điều kiện publish và trang public dùng `display_order()`, `HostSide`; trang public dùng `PublicEventResponse`)
 
 ## Quy tắc spec đang áp dụng
 - Cột, CHECK → 03 › events. Giới hạn, thứ tự, timezone, tên mặc định → 04 › Sự kiện. If-Match, revision → 04 › Sửa thiệp. Endpoint, mã lỗi → 05. Giữ điều kiện publish → 04 › Publish (quy tắc phụ Bước 6: `invitations.md`)
@@ -43,5 +45,6 @@ Sự kiện của thiệp (bảng `events`), mỗi sự kiện có `host_side`. 
 - Khóa dòng thiệp giữ cả giới hạn 10 khi có request đồng thời; test đồng thời đã được thử bỏ khóa: fail như mong đợi.
 - PATCH: `_merge` gộp giá trị đã lưu (kiểu Python: `date`, `time`, `Decimal`) với patch rồi validate lại bằng `EventCreate`; các kiểu core nhận cả giá trị Python này.
 - Thiệp đã publish: POST phải đủ ngày, giờ, địa chỉ; không xoá được sự kiện cuối, không xoá được ngày, giờ, địa chỉ (test: `tests/test_publish.py`). Bị từ chối thì rollback cả thay đổi đã flush.
-- Chưa có: `lunar_date`, lọc theo side (Bước 9, 10).
+- Lọc theo side của trang public nằm ở `invitations.service.get_public` (quy tắc phụ Bước 10: `invitations.md`); test: `tests/test_public.py`.
+- JSON của `EventResponse` đổi thứ tự key từ Bước 10 (`display_name` cuối cùng); giá trị không đổi.
 - Các CHECK có test ở cả tầng database (`tests/test_db_schema.py`) và tầng API (`tests/test_events.py`).

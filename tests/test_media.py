@@ -185,8 +185,8 @@ async def test_full_upload_flow(client: AsyncClient, templates, auth, fake_stora
     assert published.status_code == 200, published.text
     public = (await client.get(f"/public/invitations/{inv['slug']}")).json()
     assert public["albums"][0]["title"] == "Pre-wedding"
-    assert public["media"][0]["url"] == media["url"]
-    assert public["media"][0]["album_id"] == album_id
+    assert public["gallery"] == [{"media_id": media["id"], "album_id": album_id}]
+    assert public["media_by_id"][media["id"]]["url"] == media["url"]
 
 
 @pytest.mark.parametrize(("content_type", "extension"), IMAGE_TYPES + AUDIO_TYPES)
@@ -699,13 +699,13 @@ async def test_move_media_between_albums(
 # ---------- Khác ----------
 
 
-async def test_public_page_lists_only_images(
+async def test_public_gallery_has_only_images(
     client: AsyncClient, templates, auth, fake_storage
 ) -> None:
-    """Response public dạng khung (viết lại ở Bước 10): danh sách `media` chỉ có ảnh."""
+    """Trang public: `gallery` chỉ có ảnh; `media_by_id` có cả âm thanh (tests/test_public.py)."""
     inv = await _invitation(client, auth)
     image = await upload_media(client, auth, fake_storage, inv["id"])
-    await upload_media(client, auth, fake_storage, inv["id"], content_type="audio/mpeg")
+    audio = await upload_media(client, auth, fake_storage, inv["id"], content_type="audio/mpeg")
     event = await client.post(
         f"/invitations/{inv['id']}/events",
         json={
@@ -720,7 +720,11 @@ async def test_public_page_lists_only_images(
     assert event.status_code == 201, event.text
     assert (await client.post(f"/invitations/{inv['id']}/publish", headers=auth)).status_code == 200
     public = (await client.get(f"/public/invitations/{inv['slug']}")).json()
-    assert [m["id"] for m in public["media"]] == [image["id"]]
+    assert [item["media_id"] for item in public["gallery"]] == [image["id"]]
+    assert {key: value["kind"] for key, value in public["media_by_id"].items()} == {
+        image["id"]: "image",
+        audio["id"]: "audio",
+    }
 
 
 async def test_delete_invitation_cleans_storage(

@@ -1,7 +1,7 @@
 # lunar
 
 ## Mục đích
-Đổi ngày dương sang ngày âm lịch Việt Nam (UTC+7) cho `lunar_date` của sự kiện ở trang public. Chỉ tính khi trả về, không lưu (Bước 9; Bước 10 đưa vào response).
+Đổi ngày dương sang ngày âm lịch Việt Nam (UTC+7) cho `lunar_date` của sự kiện ở trang public. Chỉ tính khi trả về, không lưu (Bước 9; Bước 10 đưa vào response public).
 
 ## File code chính
 - `app/core/lunar.py`: `LunarDate`, `to_lunar`, `year_name`; hằng `TIMEZONE_HOURS = 7`
@@ -13,7 +13,7 @@
 
 ## Phụ thuộc
 - Dùng: thư viện chuẩn (`math`, `datetime`, `functools`), không thêm dependency
-- Được dùng bởi: (Bước 10) trang public của invitations
+- Được dùng bởi: events (`PublicEventResponse.lunar_date`, `computed_field`), trả ở trang public của invitations (Bước 10)
 
 ## Quy tắc spec đang áp dụng
 - Lịch Việt Nam UTC+7, không dùng thư viện lịch Trung Quốc; 21/01/1985 là mùng 1 Tết Ất Sửu → `docs/spec/04-nghiep-vu.md` › Ngày âm lịch; nguồn ở 07 › Nguồn
@@ -21,7 +21,7 @@
 
 ## Quy tắc phụ chốt ở Bước 9 (người dùng duyệt 7 đề xuất, 2026-11-06)
 1. Tự cài đặt thuật toán Hồ Ngọc Đức (điểm sóc, kinh độ Mặt Trời theo công thức rút gọn của Meeus), Python thuần.
-2. `to_lunar(date) -> LunarDate` (frozen dataclass, đúng 5 trường của spec); response ở Bước 10.
+2. `to_lunar(date) -> LunarDate` (frozen dataclass, đúng 5 trường của spec); response ở Bước 10 (`events.schemas.LunarDateResponse`, cùng 5 trường).
 3. Cách viết can chi: Giáp, Ất, Bính, Đinh, Mậu, Kỷ, Canh, Tân, Nhâm, Quý; Tý, Sửu, Dần, Mão, Thìn, Tỵ, Ngọ, Mùi, Thân, Dậu, Tuất, Hợi.
 4. Tính cho mọi ngày, không raise, không trả null. Ngoài khoảng 1800–2199 độ chính xác thiên văn giảm.
 5. UTC+7 cho mọi năm (lịch miền Bắc trước 1968 dùng UTC+8: kết quả các năm đó có thể khác lịch in thời ấy).

@@ -21,7 +21,8 @@ from app.core.merge_patch import merge_patch
 from app.core.revision import check_revision
 from app.core.storage import Storage
 from app.modules.auth.models import User
-from app.modules.events.models import Event, display_order
+from app.modules.events.models import Event, HostSide, display_order
+from app.modules.events.schemas import PublicEventResponse
 from app.modules.invitations.models import (
     MEDIA_REFERENCE_COLUMNS,
     Invitation,
@@ -29,13 +30,15 @@ from app.modules.invitations.models import (
 )
 from app.modules.invitations.schemas import (
     CONTENT_SCHEMA_VERSION,
+    GalleryItemResponse,
     InvitationContent,
     InvitationCreate,
     InvitationResponse,
     InvitationUpdate,
-    PublicAlbum,
-    PublicInvitationOut,
-    PublicMedia,
+    PublicAlbumResponse,
+    PublicInvitationResponse,
+    PublicMediaResponse,
+    RecipientSide,
     SlugAvailability,
     appearance_options,
 )
@@ -324,9 +327,14 @@ def publish_errors(content: InvitationContent, events: Sequence[Event]) -> list[
     return errors
 
 
-async def _events_in_display_order(db: AsyncSession, invitation_id: uuid.UUID) -> list[Event]:
-    stmt = select(Event).where(Event.invitation_id == invitation_id).order_by(*display_order())
-    return list(await db.scalars(stmt))
+async def _events_in_display_order(
+    db: AsyncSession, invitation_id: uuid.UUID, side: RecipientSide | None = None
+) -> list[Event]:
+    """Sự kiện của thiệp theo thứ tự hiển thị; có `side` thì chỉ của bên đó và của cả hai bên."""
+    stmt = select(Event).where(Event.invitation_id == invitation_id)
+    if side is not None:
+        stmt = stmt.where(Event.host_side.in_((side.value, HostSide.BOTH.value)))
+    return list(await db.scalars(stmt.order_by(*display_order())))
 
 
 async def check_still_publishable(
@@ -547,10 +555,16 @@ async def delete(
     return slug, was_published, keys
 
 
-# ---------- Trang public (dạng khung, đổi ở Bước 10) ----------
+# ---------- Trang public ----------
 
 
-async def get_public(db: AsyncSession, slug: str, storage: Storage) -> PublicInvitationOut:
+async def get_public(
+    db: AsyncSession, slug: str, side: RecipientSide | None, storage: Storage
+) -> PublicInvitationResponse:
+    """Response của trang public (spec 05 › Response của trang public, 04 › Link theo bên).
+
+    `side`: chỉ trả sự kiện của bên đó hoặc của cả hai bên, và tài khoản mừng cưới của bên đó.
+    """
     invitation = await db.scalar(
         select(Invitation).where(
             Invitation.slug == slug.lower(),
@@ -560,41 +574,48 @@ async def get_public(db: AsyncSession, slug: str, storage: Storage) -> PublicInv
     if invitation is None:
         raise not_found("invitation_not_found", "Không tìm thấy thiệp")
 
-    albums = (
-        await db.scalars(
-            select(Album)
-            .where(Album.invitation_id == invitation.id)
-            .order_by(Album.position, Album.created_at)
-        )
-    ).all()
-    # Danh sách dạng khung là thư viện ảnh: không gồm file âm thanh (Bước 7; Bước 10 viết lại)
-    media = (
+    content = InvitationContent.model_validate(invitation.content)
+    if side is not None:
+        gifts = [gift for gift in content.gifts if gift.recipient_side == side]
+        content = content.model_copy(update={"gifts": gifts})
+    events = await _events_in_display_order(db, invitation.id, side)
+    albums = await db.scalars(
+        select(Album)
+        .where(Album.invitation_id == invitation.id)
+        .order_by(Album.position, Album.created_at)
+    )
+    # Mọi file ready, cùng thứ tự với GET .../media; ảnh trong đó là thư viện ảnh
+    files = list(
         await db.scalars(
             select(Media)
-            .where(
-                Media.invitation_id == invitation.id,
-                Media.kind == MediaKind.IMAGE.value,
-                Media.status == MediaStatus.READY.value,
-            )
+            .where(Media.invitation_id == invitation.id, Media.status == MediaStatus.READY.value)
             .order_by(Media.position, Media.created_at)
         )
-    ).all()
+    )
 
-    return PublicInvitationOut(
+    return PublicInvitationResponse(
         slug=invitation.slug,
         template_key=invitation.template_key,
-        content=invitation.content,
+        side=side,
+        content_schema_version=invitation.content_schema_version,
+        content=content,
+        cover_media_id=invitation.cover_media_id,
+        groom_photo_media_id=invitation.groom_photo_media_id,
+        bride_photo_media_id=invitation.bride_photo_media_id,
+        music_media_id=invitation.music_media_id,
+        events=[PublicEventResponse.model_validate(e, from_attributes=True) for e in events],
+        albums=[PublicAlbumResponse(id=a.id, title=a.title, position=a.position) for a in albums],
+        gallery=[
+            GalleryItemResponse(media_id=m.id, album_id=m.album_id)
+            for m in files
+            if m.kind == MediaKind.IMAGE
+        ],
+        media_by_id={
+            m.id: PublicMediaResponse(
+                kind=m.kind, url=storage.public_url(m.storage_key), width=m.width, height=m.height
+            )
+            for m in files
+        },
         published_at=invitation.published_at,
         updated_at=invitation.updated_at,
-        albums=[PublicAlbum(id=a.id, title=a.title, position=a.position) for a in albums],
-        media=[
-            PublicMedia(
-                id=m.id,
-                album_id=m.album_id,
-                url=storage.public_url(m.storage_key),
-                width=m.width,
-                height=m.height,
-            )
-            for m in media
-        ],
     )

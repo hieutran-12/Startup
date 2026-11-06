@@ -16,10 +16,10 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 | 7 | Media: kind, âm thanh, dọn tham chiếu | Xong 2026-11-06, đã duyệt: 625/625 test qua (43 mới), ruff sạch; `docs/modules/media.md`, `invitations.md`, `core.md` |
 | 8 | Danh sách ngân hàng, GET /banks | Xong 2026-11-06, đã duyệt: 662/662 test qua (37 mới), ruff sạch; `docs/modules/banks.md`, `invitations.md` |
 | 9 | Âm lịch | Xong 2026-11-06, đã duyệt: 685/685 test qua (23 mới), ruff sạch; `docs/modules/lunar.md`, `core.md` |
-| 10 | Response public mới | Chưa bắt đầu |
+| 10 | Response public mới | Xong 2026-11-06, chờ duyệt: 704/704 test qua (19 mới), ruff sạch; `docs/modules/invitations.md`, `events.md`, `media.md`, `lunar.md` |
 | 11 | README, xoá code cũ | Chưa bắt đầu |
 
-## Ghi chú Bước 0–8 (đã gộp; chi tiết trong `docs/modules/`)
+## Ghi chú Bước 0–9 (đã gộp; chi tiết trong `docs/modules/`)
 
 - 2026-11-05: Tách `docs/spec-v1.md` thành `docs/spec/01`–`07` (giữ nguyên chữ, CRLF → LF); tạo `CLAUDE.md`, `docs/modules/`, `docs/progress.md`. Commit đầu `83b3822` là khung nguyên trạng; `thiepcuoi-backend.zip` để ngoài git (`.git/info/exclude`). Bước 0 chỉ sửa `alembic.ini` (Alembic đọc bằng cp1252).
 - Bước 1: thêm `Uuid`, `IsoDate`, `Choice` (FastAPI validate ở chế độ Python, strict từ chối chuỗi), dependency `tzdata` (Windows), handler `StarletteHTTPException` (`core.md`).
@@ -30,15 +30,16 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 - Bước 6: không đổi model, migration, endpoint; bỏ mã `missing_couple_names`; `display_order()` chuyển sang `events/models.py`. Test cũ publish thiệp được thêm sự kiện đủ ngày, giờ, địa chỉ. Thiệp đã publish trên DB dev mà chưa đủ điều kiện: mọi lần sửa sẽ 400 tới khi đủ, hoặc unpublish rồi sửa.
 - Bước 7: không đổi model, migration; spec 03 › media sửa theo yêu cầu (nhận `audio/mp3`, `audio/x-m4a`). Env đổi sang `MAX_IMAGE_BYTES`, `MAX_AUDIO_BYTES`, `MAX_IMAGES_PER_INVITATION`, `MAX_AUDIO_PER_INVITATION` (`.env` cũ còn tên cũ thì dùng mặc định). FE: bỏ mã `unsupported_file_type`, `file_too_large` (thành 422); `DELETE /media/{id}` trả `ETag`; `GET /media` có file âm thanh.
 - Bước 8: không đổi model, migration, spec; module mới `app/modules/banks/` (`banks.json` 76 dòng từ VietQR, cách tạo lại ở `banks.md`). FE: `GET /banks` không cần đăng nhập; BIN lạ → 422 `invalid_choice` tại `content.gifts[i].bank_bin`; thiệp đã lưu BIN lạ thì lần sửa content kế tiếp bị 422 tới khi sửa gift.
+- Bước 9: chỉ thêm `app/core/lunar.py`; 15 ngày đối chiếu khớp xemlicham.com và lichvannien365.com; đổi sang UTC+8 thì test phát hiện (`lunar.md`).
 
-## Ghi chú Bước 9
+## Ghi chú Bước 10
 
-- Không đổi model, migration, spec, endpoint, dependency. Chỉ thêm `app/core/lunar.py` và `tests/test_lunar.py`; chưa nơi nào gọi (Bước 10).
-- 15 ngày đối chiếu khớp cả xemlicham.com và lichvannien365.com (tháng nhuận 2025, 2020 xác nhận gián tiếp ở trang thứ hai). Đổi sang UTC+8 thì ra Tết Trung Quốc: test phân biệt được.
-- So với bản gốc của thuật toán trên 1800–2199: khác 4 ngày, bản gốc trả ngày 0 (lỗi ước lượng), bản này trả ngày 30 (`lunar.md` › Cài đặt).
+- Không đổi model, migration, spec, dependency, endpoint (chỉ thêm query `side`). `default_event_name` chuyển từ `events/service.py` sang `events/models.py`; `display_name`, `lunar_date` là `computed_field` của schema events.
+- FE: response public bỏ danh sách `media` của khung, thay bằng `gallery` (`{media_id, album_id}`) và `media_by_id` (`{kind, url, width, height}`); bốn ảnh, nhạc cố định là `*_media_id`. Thêm `side`, `content_schema_version`, `events`. `side` sai → 422. `PublicInvitationOut` → `PublicInvitationResponse`.
 
 ## Quyết định mới
 
+- 2026-11-06 (Bước 10, người dùng duyệt 4 đề xuất): `side` chỉ nhận đúng `groom`/`bride`, sai (kể cả rỗng, `both`, chữ hoa) → 422 `invalid_choice` trước khi tìm slug; `gallery` = mọi ảnh ready theo `position, created_at`, không loại ảnh đang dùng, không cắt theo `max_gallery_images`; `albums` gồm cả album rỗng; `content` kiểu `InvitationContent`, đọc không context. Chi tiết: `docs/modules/invitations.md`.
 - 2026-11-06 (Bước 9, người dùng duyệt 7 đề xuất): tự cài đặt thuật toán Hồ Ngọc Đức, không dependency; `to_lunar(date) -> LunarDate` (frozen dataclass 5 trường), tháng nhuận mang số tháng lặp lại; can chi viết "Tỵ", "Kỷ", "Mão"; tính cho mọi `date`, không raise, không null; UTC+7 cho mọi năm. Chi tiết: `docs/modules/lunar.md`.
 - 2026-11-06 (Bước 8, người dùng duyệt 9 đề xuất): đủ 76 mục VietQR, không lọc `transferSupported`; chỉ `bin`, `short_name`, `name`, đã chuẩn hóa, giữ thứ tự nguồn; file sai thì app không khởi động; `GET /banks` không cần đăng nhập, không tham số; BIN lạ → 422 `invalid_choice`; kiểm tra mỗi lần content được kiểm tra theo request, không kiểm tra khi đọc; số tài khoản giữ quy tắc Bước 4; không có script tải lại. Chi tiết: `docs/modules/banks.md`.
 - 2026-11-06 (Bước 7, người dùng duyệt 9 đề xuất, thêm yêu cầu nhận `audio/mp3`, `audio/x-m4a`: đã sửa spec 03 trước): giới hạn đếm theo `kind` gồm cả pending, khóa dòng thiệp; lỗi gắn trường → 422 (`invalid_choice`, `out_of_range`, `invalid_reference`), vượt số lượng → 400 `media_limit`; âm thanh không album, không kích thước; `MediaResponse.kind`; thứ tự chỉ cho ảnh; xoá file khóa dòng thiệp, không If-Match, 204 có `ETag`; schema media + album sang `StrictModel`, `*Out` → `*Response`; settings theo loại; public dạng khung chỉ trả ảnh. Chi tiết: `docs/modules/media.md`.

@@ -1,21 +1,21 @@
 # invitations
 
 ## Mục đích
-Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge Patch, revision, ETag/If-Match, đổi template, tham chiếu media), kiểm tra slug, trang public theo slug.
+Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge Patch, revision, ETag/If-Match, đổi template, tham chiếu media), kiểm tra slug, trang public theo slug (lọc theo side, Bước 10).
 
 ## File code chính
 - `models.py`: `Invitation`, `InvitationStatus`, `MEDIA_REFERENCE_COLUMNS`, khóa ngoại kép tới media (Bước 2)
-- `schemas.py`: content v1 (`InvitationContent`, `Couple`, `Person`, `Parent`, `Messages`, `LoveStoryItem`, `Gift`, `Appearance`, `BirthOrder`, `RecipientSide`), `Slug`/`OptionalSlug`, `InvitationCreate`, `InvitationUpdate`, `InvitationResponse` (Bước 4). `SlugAvailability`, `Public*` từ khung
-- `service.py`, `router.py`: viết lại ở Bước 4; điều kiện publish ở Bước 6. `slugs.py`, `deps.py` (`OwnedInvitation`): từ khung
+- `schemas.py`: content v1 (`InvitationContent`, `Couple`, `Person`, `Parent`, `Messages`, `LoveStoryItem`, `Gift`, `Appearance`, `BirthOrder`, `RecipientSide`), `Slug`/`OptionalSlug`, `InvitationCreate`, `InvitationUpdate`, `InvitationResponse` (Bước 4). `SlugAvailability` từ khung. Trang public (Bước 10): `PublicInvitationResponse`, `PublicAlbumResponse`, `GalleryItemResponse`, `PublicMediaResponse` (sự kiện: `events.schemas.PublicEventResponse`)
+- `service.py`, `router.py`: viết lại ở Bước 4; điều kiện publish ở Bước 6; `get_public` ở Bước 10. `slugs.py`, `deps.py` (`OwnedInvitation`): từ khung
 
 ## API công khai
-- `GET/POST /invitations`, `GET/PATCH/DELETE /invitations/{id}`, `GET /invitations/slug-availability`, `POST /invitations/{id}/publish|unpublish`, `GET /public/invitations/{slug}`
+- `GET/POST /invitations`, `GET/PATCH/DELETE /invitations/{id}`, `GET /invitations/slug-availability`, `POST /invitations/{id}/publish|unpublish`, `GET /public/invitations/{slug}?side=groom|bride` (không cần đăng nhập, header `Cache-Control` như khung)
 - Response một thiệp (tạo, xem, sửa, publish, unpublish) có header `ETag: "<revision>"`; danh sách thì không. PATCH bắt buộc `If-Match` (dependency `IfMatch` của core)
-- Service: `create`, `update(db, owner, id, data, if_match)` → (thiệp, slug cần revalidate), `to_response`, `list_for_owner` (trả `InvitationResponse`), `get_owned(for_update=)`, `default_content(manifest)`, `adjust_appearance(appearance, manifest)`, `publish`, `unpublish`, `publish_errors(content, events)` (danh sách lỗi `required`, rỗng là đủ điều kiện), `check_still_publishable(db, invitation, content=None)` (thiệp đã publish: không đạt thì rollback, 400 `breaks_published_invitation`), `release_media(invitation, media_id)` (Bước 7: trước khi xoá file, gỡ `love_story[].media_id`, tăng revision nếu thiệp đang dùng file; media gọi), `delete`, `get_public`, `check_slug`
+- Service: `create`, `update(db, owner, id, data, if_match)` → (thiệp, slug cần revalidate), `to_response`, `list_for_owner` (trả `InvitationResponse`), `get_owned(for_update=)`, `default_content(manifest)`, `adjust_appearance(appearance, manifest)`, `publish`, `unpublish`, `publish_errors(content, events)` (danh sách lỗi `required`, rỗng là đủ điều kiện), `check_still_publishable(db, invitation, content=None)` (thiệp đã publish: không đạt thì rollback, 400 `breaks_published_invitation`), `release_media(invitation, media_id)` (Bước 7: trước khi xoá file, gỡ `love_story[].media_id`, tăng revision nếu thiệp đang dùng file; media gọi), `delete`, `get_public(db, slug, side, storage)`, `check_slug`
 - `InvitationContent.model_validate(data, context={"manifest": TemplateManifest})` kiểm tra cả appearance theo manifest và `gifts[].bank_bin` theo danh sách ngân hàng (Bước 8, `invalid_choice`); không có context thì chỉ kiểm tra cấu trúc (dùng khi trả response)
 
 ## Phụ thuộc
-- Dùng: core (`merge_patch`, `revision`, `validation_error`, `field_error`), auth (`User`), banks (`is_known_bin`), templates (`TemplateManifest`, `Key`, `SectionKey`), media (`Media`, `MediaKind`, `MediaStatus`, `Album`), events (`Event`, `display_order()`: `primary_event_date`, điều kiện publish)
+- Dùng: core (`merge_patch`, `revision`, `validation_error`, `field_error`), auth (`User`), banks (`is_known_bin`), templates (`TemplateManifest`, `Key`, `SectionKey`), media (`Media`, `MediaKind`, `MediaStatus`, `Album`), events (`Event`, `HostSide`, `display_order()`: `primary_event_date`, điều kiện publish, trang public; `PublicEventResponse`)
 - Được dùng bởi: media (`OwnedInvitation`, `MEDIA_REFERENCE_COLUMNS`, `release_media`), events (`get_owned(for_update=True)`, tăng `revision` của thiệp, `check_still_publishable` khi ghi sự kiện)
 
 ## Quy tắc spec đang áp dụng
@@ -24,6 +24,7 @@ Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge
 - Điều kiện publish, `breaks_published_invitation` → 04 › Publish
 - `gifts[].bank_bin` có trong danh sách ngân hàng → 03 › Nội dung thiệp; quy tắc phụ Bước 8 ở `banks.md`
 - Mã lỗi, mã HTTP, trường response → 05
+- Trang public: trường response → 05 › Response của trang public; lọc theo side → 04 › Link theo bên; `lunar_date` → 04 › Ngày âm lịch
 
 ## Quy tắc phụ chốt ở Bước 4 (người dùng duyệt 9 đề xuất, 2026-11-06)
 1. POST nhận `content` tùy chọn, cùng dạng Merge Patch với PATCH, gộp lên content mặc định (`sections` = `default_sections` nếu không gửi).
@@ -47,7 +48,16 @@ Bảng `invitations`, schema content v1, tạo/sửa/publish/xoá thiệp (Merge
 7. Publish thiệp đã publish: giữ như khung (kiểm tra lại, `published_at = now`, revalidate); không If-Match, không tăng revision.
 8. Message: `not_ready_to_publish` "Thiệp chưa đủ thông tin để đăng", `breaks_published_invitation` "Thiệp đang đăng phải giữ đủ thông tin bắt buộc"; từng dòng ở `_REQUIRED_*` trong `service.py`.
 
+## Quy tắc phụ chốt ở Bước 10 (người dùng duyệt 4 đề xuất, 2026-11-06)
+1. `side` chỉ nhận đúng `groom`, `bride` (phân biệt hoa thường như enum trong body). `both`, `Groom`, `?side=` (rỗng), giá trị khác → 422 `validation_error`, `field: "side"`, `invalid_choice`; kiểm tra trước khi tìm slug. Tham số query lạ bị bỏ qua.
+2. `gallery` = mọi ảnh ready, thứ tự `position, created_at` (như `GET /media`), gồm cả ảnh đang làm ảnh bìa, chân dung, love_story; không cắt theo `manifest.max_gallery_images` (template tự giới hạn).
+3. `albums`: mọi album, kể cả rỗng, thứ tự `position, created_at`.
+4. `content` có kiểu `InvitationContent` trong OpenAPI, đọc không context (BIN đã bị bỏ khỏi danh sách vẫn đọc được).
+- Theo spec, không hỏi: sự kiện gồm mọi cột trừ `invitation_id`, `position` (có `id`, `created_at`, `updated_at`); `lunar_date` chỉ ở trang public, không thêm vào `EventResponse`; `media_by_id` gồm cả âm thanh (`width`, `height` null), không có file pending; `side` trong response là chuỗi hoặc null (enum trong response khai báo `str` như các response khác).
+
 ## Thứ tự kiểm tra
+Trang public: 422 `side` → 404 (slug không có hoặc thiệp chưa publish; slug hạ chữ thường như khung).
+
 PATCH: 401 → 428 thiếu If-Match → 422 body → 404 → 409 revision (sau `SELECT … FOR UPDATE`) → 404/400 template → 422 content và tham chiếu media (gộp chung một lần) → 409 slug → (không đổi gì: 200, dừng) → 400 `breaks_published_invitation` (thiệp đã publish) → ghi, tăng revision.
 
 Publish: 401 → 404 → khóa dòng thiệp `FOR UPDATE` → đọc sự kiện theo thứ tự hiển thị → 400 `not_ready_to_publish` → ghi. Ghi sự kiện cũng khóa dòng thiệp trước, nên không xoá được sự kiện giữa lúc kiểm tra và lúc đăng (test đồng thời đã thử bỏ khóa: fail).
@@ -57,7 +67,9 @@ Publish: 401 → 404 → khóa dòng thiệp `FOR UPDATE` → đọc sự kiện
 - Seed đổi manifest của template đang dùng mà appearance đã lưu không còn hợp lệ: mọi PATCH có content sẽ 422 tới khi sửa appearance (chỉ đổi template mới tự chỉnh).
 - `IntegrityError` chỉ map `slug_taken` khi vi phạm `uq_invitations_slug`; lỗi khác raise tiếp.
 - OpenAPI: `content` của Create/Update là object tự do (schema thật là `InvitationContent` ở response). FastAPI nhận `application/merge-patch+json` nhưng OpenAPI chỉ ghi `application/json`.
-- Điều kiện publish chỉ xét `full_name` (`display_name` không thay được). `PublicInvitationOut` còn dạng khung (Bước 10); từ Bước 7 danh sách `media` chỉ có ảnh; `content.gifts` chưa lọc theo side (Bước 10).
+- Điều kiện publish chỉ xét `full_name` (`display_name` không thay được).
+- Trang public đọc trực tiếp bản đang lưu (v1 chưa tách bản nháp, spec 07). Lọc gifts bằng `model_copy`, không ghi lại DB. `lunar_date`, `display_name` là `computed_field` của schema events.
 - ORM không biết `SET NULL (<cột>)`: xoá media xong, object `Invitation` trong session vẫn giữ id cũ. `media.service.delete_media` `refresh` bốn cột sau flush (Bước 7); code khác xoá media trong session còn giữ thiệp thì cũng phải refresh.
+- Test trang public: `tests/test_public.py` (fixture `published`: 4 sự kiện của hai bên tạo lộn thứ tự, 3 tài khoản, 2 album có 1 rỗng, 2 ảnh, 1 nhạc, 1 file pending).
 - Test publish: `tests/test_publish.py` (fixture `no_events_01` là mẫu không có section events). Test khác publish thiệp thì thêm sự kiện đủ ngày, giờ, địa chỉ (`_add_ready_event` ghi thẳng DB để giữ revision).
 - Test: fixture `minimal_01` có manifest khác `classic_01` (`make_minimal_manifest`); test tham chiếu media ở đây ghi thẳng `Media` vào DB; luồng upload thật và dọn tham chiếu khi xoá file: `tests/test_media_references.py`; test đồng thời đã thử bỏ khóa `FOR UPDATE` thì fail.

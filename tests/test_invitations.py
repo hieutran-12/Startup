@@ -933,7 +933,7 @@ async def test_publish_flow_and_public_page(
     body = public.json()
     assert body["template_key"] == "classic_01"
     assert body["content"]["couple"]["groom"]["display_name"] == "Nam"
-    assert body["albums"] == [] and body["media"] == []
+    assert body["albums"] == [] and body["gallery"] == [] and body["media_by_id"] == {}
     assert "owner_id" not in body
 
     unpublished = await client.post(f"/invitations/{inv['id']}/unpublish", headers=auth)

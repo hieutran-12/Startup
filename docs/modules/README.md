@@ -40,9 +40,9 @@ Code khung chạy được (Bước 0) nhưng chưa có file module: mỗi modul
 | auth | `app/modules/auth/` | users, refresh_tokens, register/login/refresh/logout, `GET /me` (giữ từ khung) | 2 (model giữ nguyên, không sửa code) | chưa có |
 | templates | `app/modules/templates/`, `app/scripts/seed_templates.py` | Bảng templates, `TemplateManifest`, seed 4 mẫu, `GET /templates` | 2, 3 | [templates.md](templates.md) |
 | invitations | `app/modules/invitations/` (có `public_router`, `slugs.py`) | Bảng invitations, schema content v1, tạo/sửa thiệp (Merge Patch, revision, ETag, If-Match), đổi template, publish; trang public `GET /public/invitations/{slug}` (lọc side, display_name, lunar_date, media_by_id) | 2, 4, 6, 10 | [invitations.md](invitations.md) |
-| events | `app/modules/events/` | Bảng events, CRUD (`/invitations/{id}/events`), tên mặc định, thứ tự, giới hạn 10, If-Match; giữ điều kiện publish khi ghi | 2, 5, 6 | [events.md](events.md) |
+| events | `app/modules/events/` | Bảng events, CRUD (`/invitations/{id}/events`), tên mặc định, thứ tự, giới hạn 10, If-Match; giữ điều kiện publish khi ghi; schema sự kiện của trang public (`lunar_date`) | 2, 5, 6, 10 | [events.md](events.md) |
 | media | `app/modules/media/`, `app/scripts/init_storage.py` | Bảng media và albums, upload-url (`kind` image/audio suy ra từ `content_type`), giới hạn theo loại, endpoint album; xoá file thì dọn tham chiếu của thiệp (gọi `invitations.service.release_media`) | 2, 7 | [media.md](media.md) |
 | banks | `app/modules/banks/` (`banks.json`, không có `models.py`) | File tĩnh danh sách ngân hàng, `GET /banks`; invitations gọi `is_known_bin` để kiểm tra `gifts[].bank_bin` | 8 | [banks.md](banks.md) |
-| lunar | `app/core/lunar.py` | Âm lịch Việt Nam UTC+7: `to_lunar(date) -> LunarDate`, `year_name`; Bước 10 dùng cho `lunar_date` của sự kiện ở trang public | 9 | [lunar.md](lunar.md) |
+| lunar | `app/core/lunar.py` | Âm lịch Việt Nam UTC+7: `to_lunar(date) -> LunarDate`, `year_name`; dùng cho `lunar_date` của sự kiện ở trang public (Bước 10) | 9, 10 | [lunar.md](lunar.md) |
 
 Bước 11 (README, xoá code cũ) chạm tới mọi module: cập nhật các file module bị ảnh hưởng.
