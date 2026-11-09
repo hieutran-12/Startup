@@ -36,7 +36,8 @@ uv run ruff format .   # format
 uv run alembic check   # model khớp migration
 ```
 
-- Docker chưa chạy thì `uv run pytest` treo rất lâu thay vì báo lỗi: chạy `docker compose up -d` trước. Toàn bộ test (khoảng 750) mất 6–11 phút trên máy dev.
+- Docker chưa chạy thì `uv run pytest` treo rất lâu thay vì báo lỗi: chạy `docker compose up -d` trước.
+- Windows không cần Docker Desktop: Docker Engine cài trong WSL2 (Ubuntu) vẫn chạy được, app và test ở Windows gọi `localhost:5432`, `localhost:9000` như thường. WSL tự tắt khi không còn cửa sổ Ubuntu nào mở (container dừng theo): để một cửa sổ Ubuntu mở trong lúc làm việc, mở lại thì chạy `docker compose up -d`. Toàn bộ test (khoảng 750) mất 6–11 phút trên máy dev.
 - Chưa có dữ liệu production nên chỉ có một migration `0001`: đổi model thì sửa thẳng file đó, rồi dựng lại DB dev (`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`, `alembic upgrade head`, seed lại).
 - Windows: `alembic.ini` chỉ được chứa ký tự ASCII (Alembic đọc file này bằng cp1252). Chạy script qua pipe thì đặt `PYTHONIOENCODING=utf-8`.
 

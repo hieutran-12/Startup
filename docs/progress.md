@@ -40,7 +40,7 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 
 ## Chuẩn bị deploy AWS (ngoài kế hoạch 06; người dùng duyệt 2026-11-09)
 
-- Storage chạy với AWS S3: endpoint trống → URL virtual-hosted theo region, key trống → IAM role; `check_storage_settings`; `init_storage` từ chối AWS S3. Thêm `Dockerfile`, `.dockerignore`; README › Lên production viết lại cho AWS (ECS/EC2, RDS `?ssl=require`, S3 + CloudFront, IAM, CORS); `.env.example`, `pyproject.toml`, sơ đồ excalidraw bỏ R2. Không đổi model, migration, endpoint, spec (`core.md`). Kiểm tra: ruff sạch; 224 test không cần DB qua (9 mới, `tests/test_storage.py`). Máy dev lúc đó chưa có Docker: **chưa chạy bộ test cần PostgreSQL, chưa build image**; chạy lại `uv run pytest` và `docker build` trên máy có Docker.
+- Storage chạy với AWS S3: endpoint trống → URL virtual-hosted theo region, key trống → IAM role; `check_storage_settings`; `init_storage` từ chối AWS S3. Thêm `Dockerfile`, `.dockerignore`; README › Lên production viết lại cho AWS (ECS/EC2, RDS `?ssl=require`, S3 + CloudFront, IAM, CORS); `.env.example`, `pyproject.toml`, sơ đồ excalidraw bỏ R2. Không đổi model, migration, endpoint, spec (`core.md`). Kiểm tra 2026-11-10 (Docker Engine trong WSL2): 762/762 test qua (9 mới, `tests/test_storage.py`), ruff sạch, `alembic check` sạch; `docker build` được (664 MB), container chạy user `app`, nối DB local trả `/health`, `/templates`, `/banks`.
 
 ## Quyết định mới
 
