@@ -1,7 +1,7 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`. 2026-11-06: kiểu `Email`, `Password` cho auth.
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`. 2026-11-06: kiểu `Email`, `Password` cho auth. 2026-11-09: storage chạy với AWS S3 (IAM role), `Dockerfile`.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
@@ -13,7 +13,10 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `alembic/versions/20261104_0001_initial_schema.py`: toàn bộ 7 bảng (viết lại ở Bước 2)
 - `alembic/env.py`: `COMPARE_OPTIONS` (so kiểu và DEFAULT), nhận connection truyền vào (Bước 2)
 - `config.py`: giữ từ khung; Bước 7 thay `max_upload_bytes`, `max_media_per_invitation`, `allowed_image_types` bằng `max_image_bytes` (15 MB), `max_audio_bytes` (10 MB), `max_images_per_invitation` (200), `max_audio_per_invitation` (1). Loại file cho phép là enum `MediaMimeType` của media, không cấu hình qua env
-- `security.py`, `deps.py`, `storage.py`, `revalidate.py`: giữ từ khung
+- `config.py` (2026-11-09): `s3_access_key_id`, `s3_secret_access_key` nhận `None` (env để trống); `check_storage_settings` (xem mục Storage)
+- `storage.py`: giữ từ khung; 2026-11-09 chọn kiểu địa chỉ theo endpoint (xem mục Storage)
+- `security.py`, `deps.py`, `revalidate.py`: giữ từ khung
+- `Dockerfile`, `.dockerignore` ở gốc repo (2026-11-09): image production, mô tả ở README › Lên production
 
 ## API công khai
 - `enum_check(column, StrEnum)`: chuỗi `<cột> IN ('a', 'b')` cho `CheckConstraint`; tên CHECK đặt dạng `name="<cột>_valid"`, convention thêm tiền tố `ck_<bảng>_`
@@ -59,6 +62,15 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `enum`, `literal_error` → `invalid_choice`; mọi loại khác (sai kiểu, JSON hỏng, `value_error`) → `invalid_format`
 - `field`: `content.love_story[0].title`; lỗi không gắn với trường (JSON hỏng, body không phải object, thiếu body) → `""`
 - Lỗi tham chiếu chéo trong `model_validator`: gom `field_error(loc, code, message, value)` rồi raise `ValidationError.from_exception_data(...)`; Pydantic giữ `loc` của từng lỗi và nối tiền tố bên ngoài. Ví dụ: `TemplateManifest`, `Appearance`, `LoveStoryItem`. Validator cần dữ liệu ngoài (manifest) thì đọc `info.context`
+
+## Storage và image production (2026-11-09, chuẩn bị deploy AWS)
+- Có `S3_ENDPOINT_URL` (RustFS): `addressing_style="path"`, URL `endpoint/bucket/key`. Endpoint trống (AWS S3): `addressing_style="virtual"` ghi rõ, URL `https://<bucket>.s3.<region>.amazonaws.com/key`. Để mặc định thì botocore 1.43 ký presigned URL trên endpoint toàn cầu `<bucket>.s3.amazonaws.com`; bucket mới tạo ngoài us-east-1 bị 307, trình duyệt PUT qua CORS sẽ lỗi.
+- Hai key đều `None`: boto3 lấy quyền theo chuỗi mặc định (biến môi trường `AWS_*`, task role của ECS, instance profile của EC2). Test dùng biến môi trường `AWS_*` thay cho IAM role.
+- `check_storage_settings` (app không khởi động nếu sai): chỉ đặt một trong hai key → lỗi; endpoint trống mà `S3_REGION` vẫn là `auto` → lỗi (`auto` chỉ hợp với storage tự đặt endpoint).
+- Spec không nhắc nhà cung cấp cloud: phần này không đổi model, migration, endpoint, spec.
+- `Dockerfile`: `python:3.13-slim`, uv 0.13.7 (đọc được `uv.lock` revision 5; nâng uv dev mà lock đổi revision thì nâng theo), `uv sync --locked --no-dev`, user không phải root, `uvicorn --proxy-headers --forwarded-allow-ips *` cổng 8000. Migration và seed chạy bằng chính image. Chưa build thử (máy dev chưa có Docker): đã kiểm tra `uv sync --locked --no-dev --no-install-project`, import `app.main` và `GET /health` với đúng lệnh chạy trên môi trường không có thư viện dev.
+- Trên Windows, `uvicorn.exe ... --forwarded-allow-ips *` bị launcher đổi `*` thành danh sách file; viết `--forwarded-allow-ips=*`. CMD dạng mảng trong Docker không bị.
+- RDS: `DATABASE_URL` thêm `?ssl=require`; SQLAlchemy chuyển nguyên `ssl` sang `asyncpg.connect`.
 
 ## Lưu ý
 - FastAPI validate body ở chế độ Python: trong `StrictModel`, khai báo `uuid.UUID`, `date`, `time` hay Enum gốc sẽ từ chối mọi chuỗi. Luôn dùng `Uuid`, `IsoDate`, `LocalTime`, `Choice`. Kiểu `str` thường không được chuẩn hóa: chỉ dùng cho key so khớp nguyên văn (ví dụ `Appearance.palette_key`).

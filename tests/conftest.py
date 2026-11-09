@@ -33,7 +33,7 @@ if settings.database_url == TEST_DATABASE_URL or "test" not in TEST_DATABASE_URL
 
 
 class FakeStorage:
-    """Giả lập S3/R2 trong bộ nhớ."""
+    """Giả lập S3 trong bộ nhớ."""
 
     def __init__(self) -> None:
         self.objects: dict[str, ObjectInfo] = {}

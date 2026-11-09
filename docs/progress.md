@@ -35,10 +35,12 @@ Cập nhật sau mỗi bước. Giữ dưới 60 dòng; khi dài thì gộp các
 
 ## Ghi chú Bước 11
 
-- `README.md` viết lại cho dev BE/FE: lệnh chạy, cấu trúc, bảng mọi endpoint, quy ước dữ liệu, định dạng lỗi, revision/ETag/If-Match, các luồng FE (Merge Patch, sự kiện, upload ảnh và nhạc, mừng cưới, publish, trang public, content v1), production, ngoài phạm vi. Không nhắc `event_date`, `theme`, `lunar_date_text` và các trường content của khung.
-- `tests/test_readme.py`: README không chứa tên trường cũ; endpoint trong README (dạng `` `METHOD /path` ``) khớp hai chiều với OpenAPI. Đổi endpoint mà quên README thì test fail.
-- Xoá code: vulture không thấy code chết trong `app/` (chỉ route, validator, fixture do framework gọi). Giữ `Digits`, `RequiredMultiLine` (chỉ test dùng, nhưng là bộ kiểu spec 04 yêu cầu) và các test gửi trường cũ để kiểm tra bị từ chối.
-- Dọn: `SlugAvailability` → `SlugAvailabilityResponse` (JSON không đổi); `.env.example` thêm `MAX_EVENTS_PER_INVITATION`; mã mẫu trong `test_core_errors.py` đổi thành `sample_rule_broken`; `tests/test_public.py` chạy `ruff format`. Không đổi model, migration, endpoint.
+- `README.md` viết lại cho dev BE/FE: lệnh chạy, cấu trúc, bảng mọi endpoint, quy ước dữ liệu, định dạng lỗi, revision/ETag/If-Match, các luồng FE (Merge Patch, sự kiện, upload ảnh và nhạc, mừng cưới, publish, trang public, content v1), production, ngoài phạm vi; không nhắc `event_date`, `theme`, `lunar_date_text` và trường content của khung. `tests/test_readme.py`: README không chứa tên trường cũ; endpoint trong README (dạng `` `METHOD /path` ``) khớp hai chiều với OpenAPI.
+- Xoá code: vulture không thấy code chết trong `app/`; giữ `Digits`, `RequiredMultiLine` (bộ kiểu spec 04 yêu cầu) và các test gửi trường cũ. Dọn: `SlugAvailability` → `SlugAvailabilityResponse` (JSON không đổi); `.env.example` thêm `MAX_EVENTS_PER_INVITATION`; mã mẫu `sample_rule_broken`; `tests/test_public.py` chạy `ruff format`. Không đổi model, migration, endpoint.
+
+## Chuẩn bị deploy AWS (ngoài kế hoạch 06; người dùng duyệt 2026-11-09)
+
+- Storage chạy với AWS S3: endpoint trống → URL virtual-hosted theo region, key trống → IAM role; `check_storage_settings`; `init_storage` từ chối AWS S3. Thêm `Dockerfile`, `.dockerignore`; README › Lên production viết lại cho AWS (ECS/EC2, RDS `?ssl=require`, S3 + CloudFront, IAM, CORS); `.env.example`, `pyproject.toml`, sơ đồ excalidraw bỏ R2. Không đổi model, migration, endpoint, spec (`core.md`). Kiểm tra: ruff sạch; 224 test không cần DB qua (9 mới, `tests/test_storage.py`). Máy dev lúc đó chưa có Docker: **chưa chạy bộ test cần PostgreSQL, chưa build image**; chạy lại `uv run pytest` và `docker build` trên máy có Docker.
 
 ## Quyết định mới
 

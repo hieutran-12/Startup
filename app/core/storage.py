@@ -1,4 +1,4 @@
-"""Lớp truy cập object storage qua S3 API (RustFS khi chạy local, Cloudflare R2 khi production)."""
+"""Lớp truy cập object storage qua S3 API (RustFS khi chạy local, AWS S3 khi production)."""
 
 import logging
 from dataclasses import dataclass
@@ -31,13 +31,20 @@ class Storage(Protocol):
 class S3Storage:
     def __init__(self) -> None:
         self.bucket = settings.s3_bucket
+        # Có endpoint (RustFS): URL dạng path (endpoint/bucket/key). AWS S3 (không có endpoint):
+        # ghi rõ "virtual" để URL theo region của bucket (bucket.s3.<region>.amazonaws.com/key).
+        # Để mặc định thì presigned URL dùng endpoint toàn cầu bucket.s3.amazonaws.com: bucket mới
+        # tạo ngoài us-east-1 bị chuyển hướng 307, trình duyệt PUT qua CORS sẽ lỗi
+        addressing_style = "path" if settings.s3_endpoint_url else "virtual"
+        # Hai key là None thì boto3 tự lấy quyền theo chuỗi mặc định: IAM role của ECS task/EC2,
+        # biến môi trường AWS_*. Không cần dán access key vào .env
         self.client: Any = boto3.client(
             "s3",
             endpoint_url=settings.s3_endpoint_url,
             region_name=settings.s3_region,
             aws_access_key_id=settings.s3_access_key_id,
             aws_secret_access_key=settings.s3_secret_access_key,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+            config=Config(signature_version="s3v4", s3={"addressing_style": addressing_style}),
         )
 
     def presign_put(self, key: str, content_type: str) -> str:

@@ -1,7 +1,7 @@
 [project]
 name = "thiepcuoi-backend"
 version = "0.1.0"
-description = "Backend cho nền tảng thiệp cưới online: FastAPI + PostgreSQL + S3/R2"
+description = "Backend cho nền tảng thiệp cưới online: FastAPI + PostgreSQL + S3"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi[standard]>=0.115",

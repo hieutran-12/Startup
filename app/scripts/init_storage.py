@@ -2,8 +2,8 @@
 
     uv run python -m app.scripts.init_storage
 
-Ở production (Cloudflare R2) hãy cấu hình trong dashboard R2 thay vì chạy script này:
-bật Public access qua custom domain và thêm CORS cho domain Next.js.
+Không chạy với AWS S3: bucket production giữ chặn truy cập công khai, đọc ảnh qua CloudFront,
+CORS cấu hình trên AWS console (README › Lên production).
 """
 
 import json
@@ -15,8 +15,9 @@ from app.core.storage import S3Storage
 
 
 def main() -> None:
-    if settings.is_production:
-        raise SystemExit("Script này chỉ dành cho môi trường local")
+    # Không có endpoint nghĩa là đang trỏ tới AWS S3: script sẽ mở đọc công khai cho bucket thật
+    if settings.is_production or settings.s3_endpoint_url is None:
+        raise SystemExit("Script này chỉ dành cho storage local (RustFS)")
 
     storage = S3Storage()
     client, bucket = storage.client, storage.bucket

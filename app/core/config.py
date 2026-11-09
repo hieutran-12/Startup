@@ -29,13 +29,15 @@ class Settings(BaseSettings):
     # CORS: danh sách origin của Next.js, phân tách bằng dấu phẩy trong .env
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
-    # Object storage (S3 API: RustFS ở local, Cloudflare R2 ở production)
+    # Object storage (S3 API). Local: RustFS trong docker-compose. Production: AWS S3, để trống
+    # S3_ENDPOINT_URL, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (dùng IAM role) và đặt S3_REGION là
+    # region của bucket
     s3_endpoint_url: str | None = "http://localhost:9000"
     s3_region: str = "auto"
-    s3_access_key_id: str = "thiepcuoi"
-    s3_secret_access_key: str = "thiepcuoi-secret"
+    s3_access_key_id: str | None = "thiepcuoi"
+    s3_secret_access_key: str | None = "thiepcuoi-secret"
     s3_bucket: str = "thiepcuoi-media"
-    # URL công khai để đọc ảnh (domain CDN gắn với bucket R2).
+    # URL công khai để đọc ảnh (production: domain CloudFront trỏ vào bucket).
     # Link ảnh = media_public_base_url + "/" + storage_key
     media_public_base_url: str = "http://localhost:9000/thiepcuoi-media"
     presigned_url_ttl_seconds: int = 600
@@ -64,6 +66,8 @@ class Settings(BaseSettings):
         "test_database_url",
         "cookie_domain",
         "s3_endpoint_url",
+        "s3_access_key_id",
+        "s3_secret_access_key",
         "frontend_revalidate_url",
         "frontend_revalidate_secret",
         mode="before",
@@ -79,6 +83,20 @@ class Settings(BaseSettings):
     @classmethod
     def strip_trailing_slash(cls, value: str) -> str:
         return value.rstrip("/")
+
+    @model_validator(mode="after")
+    def check_storage_settings(self) -> "Settings":
+        if (self.s3_access_key_id is None) != (self.s3_secret_access_key is None):
+            raise ValueError(
+                "S3_ACCESS_KEY_ID và S3_SECRET_ACCESS_KEY phải cùng đặt hoặc cùng để trống"
+            )
+        # "auto" chỉ hợp với storage tự đặt endpoint; AWS S3 cần region thật để ký URL đúng
+        if self.s3_endpoint_url is None and self.s3_region == "auto":
+            raise ValueError(
+                "Dùng AWS S3 (S3_ENDPOINT_URL để trống) thì S3_REGION phải là region của bucket,"
+                " ví dụ ap-southeast-2"
+            )
+        return self
 
     @model_validator(mode="after")
     def check_production_settings(self) -> "Settings":
