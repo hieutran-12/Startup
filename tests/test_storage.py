@@ -1,4 +1,4 @@
-"""Client S3 chạy được với storage local (RustFS) và với AWS S3 dùng IAM role.
+"""Client S3 chạy được với storage tự chạy (RustFS, local và VPS) và với AWS S3 dùng IAM role.
 
 Không gọi mạng: chỉ tạo client và ký presigned URL.
 """
@@ -138,5 +138,35 @@ def test_aws_s3_requires_bucket_region() -> None:
 def test_init_storage_refuses_aws_s3(monkeypatch: pytest.MonkeyPatch) -> None:
     _use(monkeypatch, s3_endpoint_url=None, s3_region="ap-southeast-2")
 
-    with pytest.raises(SystemExit, match="local"):
+    with pytest.raises(SystemExit, match="S3_ENDPOINT_URL"):
         init_storage.main()
+
+
+def test_init_storage_runs_in_production_with_own_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Production trên VPS dùng storage tự chạy (có endpoint): script vẫn phải tạo được bucket."""
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def head_bucket(self, **_: object) -> None:
+            self.calls.append("head_bucket")
+
+        def put_bucket_cors(self, **_: object) -> None:
+            self.calls.append("put_bucket_cors")
+
+        def put_bucket_policy(self, **_: object) -> None:
+            self.calls.append("put_bucket_policy")
+
+    class FakeStorage:
+        bucket = "thiepcuoi-media"
+        client = FakeClient()
+
+    _use(monkeypatch, app_env="production", s3_endpoint_url="https://media.example.com")
+    monkeypatch.setattr(init_storage, "S3Storage", FakeStorage)
+
+    init_storage.main()
+
+    assert FakeStorage.client.calls == ["head_bucket", "put_bucket_cors", "put_bucket_policy"]

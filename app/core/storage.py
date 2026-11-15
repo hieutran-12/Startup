@@ -1,4 +1,4 @@
-"""Lớp truy cập object storage qua S3 API (RustFS khi chạy local, AWS S3 khi production)."""
+"""Lớp truy cập object storage qua S3 API (RustFS ở local và production; chạy được cả AWS S3)."""
 
 import logging
 from dataclasses import dataclass

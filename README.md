@@ -2,7 +2,7 @@
 
 Backend v1 cho dịch vụ thiệp cưới online. Cặp đôi đăng ký tài khoản, chọn mẫu thiệp, nhập nội dung, sự kiện, ảnh và nhạc nền rồi đăng thiệp lên một đường dẫn riêng (`thiepcuoi.vn/nam-lan`). Một thiệp dùng chung cho hai bên gia đình; khách mở link chung hoặc link riêng của nhà trai, nhà gái. Trang thiệp public do Next.js render.
 
-**Stack:** Python 3.13 · FastAPI · Pydantic (strict) · SQLAlchemy 2.0 async · PostgreSQL ≥ 15 (docker-compose dùng 16) · Alembic · S3 API (RustFS khi chạy local, AWS S3 khi production) · uv · pytest · ruff · Docker (image production)
+**Stack:** Python 3.13 · FastAPI · Pydantic (strict) · SQLAlchemy 2.0 async · PostgreSQL ≥ 15 (docker-compose dùng 16) · Alembic · S3 API (RustFS, ở local và production) · uv · pytest · ruff · Docker · Caddy (production trên VPS)
 
 ## Tài liệu
 
@@ -58,7 +58,7 @@ app/
 │   ├── lunar.py             # âm lịch Việt Nam UTC+7
 │   ├── security.py          # Argon2id, JWT access token, refresh token
 │   ├── deps.py              # DbSession, CurrentUser
-│   ├── storage.py           # presigned URL, head/delete object (RustFS hoặc AWS S3)
+│   ├── storage.py           # presigned URL, head/delete object (S3 API: RustFS)
 │   └── revalidate.py        # báo Next.js build lại trang thiệp
 ├── modules/
 │   ├── auth/                # đăng ký, đăng nhập, refresh, logout, /me
@@ -72,6 +72,8 @@ alembic/versions/            # migration 0001: toàn bộ schema
 docs/                        # spec, tài liệu module, tiến độ
 tests/                       # pytest chạy với PostgreSQL thật, storage giả lập
 Dockerfile                   # image chạy API ở production (uvicorn, cổng 8000)
+docker-compose.prod.yml      # production trên VPS: Caddy, API, PostgreSQL, RustFS
+docker/Caddyfile             # reverse proxy HTTPS cho domain API và domain file
 ```
 
 Mỗi module gồm `models.py` (bảng), `schemas.py` (request/response), `service.py` (nghiệp vụ, là các hàm, không phụ thuộc HTTP) và `router.py` (endpoint mỏng, chỉ gọi service). `banks` không có bảng nên không có `models.py`.
@@ -226,19 +228,51 @@ Sự kiện và các ảnh, nhạc cố định không nằm trong `content`. Tr
 
 ## Lên production
 
-Production chạy trên AWS: API là container (ECS hoặc EC2), database là RDS PostgreSQL 16, file nằm trên S3 và đọc qua CloudFront.
+Production chạy trên một VPS bằng `docker-compose.prod.yml`, gồm bốn container: Caddy (reverse proxy, tự xin chứng chỉ HTTPS), API, PostgreSQL 16 và RustFS (lưu file qua S3 API). Chỉ Caddy mở cổng ra ngoài.
 
-- **Biến môi trường:** `APP_ENV=production`, `JWT_SECRET` ngẫu nhiên ≥ 32 ký tự, `COOKIE_SECURE=true`, `CORS_ORIGINS` là domain Next.js. Nếu FE và API khác site (ví dụ FE ở `*.amplifyapp.com`, API ở `api.thiepcuoi.vn`) thì đặt `COOKIE_SAMESITE=none`; tốt nhất là dùng chung domain gốc (`thiepcuoi.vn` và `api.thiepcuoi.vn`). `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` trỏ tới route revalidate của Next.js. Các giới hạn `MAX_*` có trong `.env.example`.
-- **Image:** `docker build -t thiepcuoi-api .` theo `Dockerfile`. Container chạy `uvicorn` ở cổng 8000 và tin header `X-Forwarded-*` của load balancer; health check là `GET /health`. Image không chứa `.env`: biến môi trường truyền vào lúc chạy (task definition của ECS hoặc `docker run --env-file`).
-- **Database (RDS PostgreSQL 16):** `DATABASE_URL=postgresql+asyncpg://<user>:<mật khẩu>@<endpoint RDS>:5432/<tên db>?ssl=require`. RDS PostgreSQL 16 mặc định bắt buộc SSL; `ssl=require` mã hóa kết nối nhưng không kiểm tra chứng chỉ của server.
-- **Storage (AWS S3):**
-  - Bucket riêng, tên không có dấu chấm, bật Block Public Access. Để trống `S3_ENDPOINT_URL`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`; `S3_REGION` là region của bucket (ví dụ `ap-southeast-2`). App lấy quyền từ IAM role của máy chạy (task role của ECS hoặc instance profile của EC2), không cần access key. Cấu hình thiếu region hoặc chỉ đặt một trong hai key thì app không khởi động.
-  - IAM role cần `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` trên `arn:aws:s3:::<bucket>/*` (`GetObject` dùng cho cả HEAD khi xác nhận upload).
-  - CORS của bucket: `AllowedOrigins` là domain Next.js, `AllowedMethods` gồm `PUT`, `GET`, `HEAD`, `AllowedHeaders` là `*`, `ExposeHeaders` là `ETag`. Trình duyệt PUT file thẳng lên S3 bằng presigned URL dạng `https://<bucket>.s3.<region>.amazonaws.com/...`.
-  - Đọc file qua CloudFront (Origin Access Control tới bucket): `MEDIA_PUBLIC_BASE_URL=https://<id>.cloudfront.net` hoặc domain riêng gắn với CloudFront.
-  - `init_storage` chỉ dành cho RustFS ở local, từ chối chạy khi `S3_ENDPOINT_URL` trống.
-- **Migration và seed:** trước mỗi lần deploy chạy `alembic upgrade head` bằng chính image (`docker run --env-file .env thiepcuoi-api alembic upgrade head`, hoặc một task ECS với lệnh đó), rồi `python -m app.scripts.seed_templates` (chạy lại nhiều lần vẫn đúng). Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
-- Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
+**Chuẩn bị**
+
+- VPS Linux đã cài Docker Engine và plugin compose; firewall chỉ mở cổng 22, 80, 443.
+- Hai domain trỏ bản ghi A về IP của VPS: một cho API (ví dụ `api.thiepcuoi.vn`), một cho file (ví dụ `media.thiepcuoi.vn`). Caddy chỉ xin được chứng chỉ khi DNS đã trỏ đúng.
+
+**Lần đầu**
+
+```bash
+git clone <repo> thiepcuoi && cd thiepcuoi
+cp .env.production.example .env        # rồi điền giá trị
+docker compose -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+docker compose -f docker-compose.prod.yml run --rm api python -m app.scripts.seed_templates
+docker compose -f docker-compose.prod.yml run --rm api python -m app.scripts.init_storage
+```
+
+- **Biến môi trường (`.env`):** `API_DOMAIN`, `MEDIA_DOMAIN`; `POSTGRES_PASSWORD` (chỉ chữ và số, vì nằm trong URL kết nối); `JWT_SECRET` ngẫu nhiên ≥ 32 ký tự; `CORS_ORIGINS` là domain Next.js; `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` là tài khoản tự đặt cho RustFS; `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` trỏ tới route revalidate của Next.js. FE và API khác site thì đặt `COOKIE_SAMESITE=none`; tốt nhất là dùng chung domain gốc (`thiepcuoi.vn` và `api.thiepcuoi.vn`).
+- **Compose tự đặt:** `APP_ENV=production`, `COOKIE_SECURE=true`, `DATABASE_URL` (tới container `postgres`), `S3_ENDPOINT_URL=https://<MEDIA_DOMAIN>`, `S3_REGION=auto`, `MEDIA_PUBLIC_BASE_URL=https://<MEDIA_DOMAIN>/thiepcuoi-media`. Thiếu biến bắt buộc thì compose báo lỗi ngay; `JWT_SECRET` yếu thì API không khởi động.
+- **Caddy (`docker/Caddyfile`):** `API_DOMAIN` chuyển tới API (body tối đa 1 MB), `MEDIA_DOMAIN` chuyển tới RustFS (body tối đa 16 MB, vì link presigned không tự giới hạn được dung lượng). Trình duyệt PUT file thẳng lên `https://<MEDIA_DOMAIN>/thiepcuoi-media/...` và đọc file cũng ở đó.
+- **`init_storage`:** tạo bucket, bật CORS theo `CORS_ORIGINS` và cho đọc công khai. Đổi `CORS_ORIGINS` thì chạy lại lệnh này.
+- **Kiểm tra:** `https://<API_DOMAIN>/health` trả `{"status": "ok"}`. Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
+
+**Cập nhật phiên bản**
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml build api
+docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+docker compose -f docker-compose.prod.yml up -d
+```
+
+Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
+
+**Sao lưu**
+
+Dữ liệu nằm trong hai volume của Docker: `postgres-data` và `storage-data`. Mất VPS là mất cả hai, nên cần sao lưu ra ngoài VPS theo lịch:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T postgres pg_dump -U thiepcuoi thiepcuoi | gzip > thiepcuoi-$(date +%F).sql.gz
+docker run --rm -v thiepcuoi_storage-data:/data:ro -v "$PWD":/backup alpine tar czf /backup/storage-$(date +%F).tar.gz -C /data .
+```
+
+Tên volume có tiền tố là tên thư mục chứa repo (`thiepcuoi_` nếu clone như trên); xem bằng `docker volume ls`.
 
 ## Ngoài phạm vi v1
 

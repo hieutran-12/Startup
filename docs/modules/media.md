@@ -7,7 +7,7 @@ File của thiệp (bảng `media`, `kind` ảnh hoặc âm thanh) và album (b�
 - `models.py`: `Media`, `Album`, `MediaKind`, `MediaStatus`, CHECK, UNIQUE (Bước 2); `MediaMimeType` (8 loại file, `.kind`, `.extension`) (Bước 7)
 - `schemas.py`: `UploadUrlRequest` (kiểm tra dung lượng theo loại, âm thanh không album), `CompleteUploadRequest`, `MediaUpdate`, `ReorderRequest`, `AlbumCreate`, `AlbumUpdate` (đều `StrictModel`); `UploadUrlResponse`, `MediaResponse`, `AlbumResponse`; `max_size_bytes(kind)`, `size_limit_message(kind)`
 - `service.py`: upload, quản lý file, album; `_lock_invitation` (khóa dòng thiệp, `populate_existing`)
-- `router.py`; `app/scripts/init_storage.py`: tạo bucket, CORS, đọc công khai; chỉ cho RustFS ở local, từ chối khi production hoặc `S3_ENDPOINT_URL` trống (AWS S3) (2026-11-09)
+- `router.py`; `app/scripts/init_storage.py`: tạo bucket, CORS, đọc công khai cho RustFS ở local và production trên VPS; từ chối khi `S3_ENDPOINT_URL` trống (AWS S3) (2026-11-16)
 
 ## API công khai
 - `POST /invitations/{id}/media/upload-url` → `UploadUrlResponse` (`headers` là `Content-Type` đúng loại client gửi); `POST .../media/{media_id}/complete` → `MediaResponse`

@@ -1,8 +1,8 @@
-# Image chạy API ở production (AWS ECS/EC2). Local dev không cần image này: dùng `uv run fastapi dev`.
-#   docker build -t thiepcuoi-api .
-#   docker run --env-file .env -p 8000:8000 thiepcuoi-api
-#   docker run --env-file .env thiepcuoi-api alembic upgrade head
-#   docker run --env-file .env thiepcuoi-api python -m app.scripts.seed_templates
+# Image chạy API ở production (VPS, docker-compose.prod.yml). Local dev không cần image này: dùng
+# `uv run fastapi dev`.
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
+#   docker compose -f docker-compose.prod.yml run --rm api python -m app.scripts.seed_templates
 FROM python:3.13-slim
 
 # uv cùng phiên bản đọc được uv.lock (revision 5)
@@ -32,5 +32,5 @@ USER app
 
 EXPOSE 8000
 
-# Chạy sau load balancer (ALB): tin header X-Forwarded-* để biết request gốc là https
+# Chạy sau reverse proxy (Caddy): tin header X-Forwarded-* để biết request gốc là https
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

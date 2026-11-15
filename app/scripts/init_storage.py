@@ -1,9 +1,10 @@
-"""Chuẩn bị bucket cho môi trường LOCAL (RustFS): tạo bucket, bật CORS, cho phép đọc công khai.
+"""Chuẩn bị bucket trên storage tự chạy (RustFS): tạo bucket, bật CORS, cho phép đọc công khai.
 
     uv run python -m app.scripts.init_storage
 
-Không chạy với AWS S3: bucket production giữ chặn truy cập công khai, đọc ảnh qua CloudFront,
-CORS cấu hình trên AWS console (README › Lên production).
+Dùng cho cả local và production trên VPS (README › Lên production). Chạy lại nhiều lần vẫn đúng.
+Không chạy khi `S3_ENDPOINT_URL` trống (khi đó client trỏ tới AWS S3): script sẽ mở đọc công khai
+cho một bucket không do mình dựng.
 """
 
 import json
@@ -16,8 +17,8 @@ from app.core.storage import S3Storage
 
 def main() -> None:
     # Không có endpoint nghĩa là đang trỏ tới AWS S3: script sẽ mở đọc công khai cho bucket thật
-    if settings.is_production or settings.s3_endpoint_url is None:
-        raise SystemExit("Script này chỉ dành cho storage local (RustFS)")
+    if settings.s3_endpoint_url is None:
+        raise SystemExit("Script này chỉ dành cho storage tự chạy (RustFS): cần S3_ENDPOINT_URL")
 
     storage = S3Storage()
     client, bucket = storage.client, storage.bucket

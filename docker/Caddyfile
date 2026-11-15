@@ -1,0 +1,18 @@
+# Reverse proxy của production (docker-compose.prod.yml). Caddy tự xin và gia hạn chứng chỉ HTTPS
+# cho hai domain; DNS của cả hai phải trỏ về IP của VPS trước khi chạy.
+
+{$API_DOMAIN} {
+	# API chỉ nhận JSON; file upload đi thẳng tới storage, không qua API
+	request_body {
+		max_size 1MB
+	}
+	reverse_proxy api:8000
+}
+
+{$MEDIA_DOMAIN} {
+	# Lớn hơn MAX_IMAGE_BYTES (15 MB) một chút: link presigned không tự giới hạn được dung lượng
+	request_body {
+		max_size 16MB
+	}
+	reverse_proxy storage:9000
+}
