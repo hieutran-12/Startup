@@ -10,7 +10,7 @@
 }
 
 {$MEDIA_DOMAIN} {
-	# Lớn hơn MAX_IMAGE_BYTES (15 MB) một chút: link presigned không tự giới hạn được dung lượng
+	# Lớn hơn MAX_IMAGE_BYTES (15 MB) một chút. Link presigned đã ký dung lượng; đây là lớp chặn thứ hai
 	request_body {
 		max_size 16MB
 	}

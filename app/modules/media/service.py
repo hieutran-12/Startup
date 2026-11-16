@@ -136,7 +136,7 @@ async def create_upload(
 
     return UploadUrlResponse(
         media_id=media.id,
-        upload_url=storage.presign_put(media.storage_key, content_type.value),
+        upload_url=storage.presign_put(media.storage_key, content_type.value, data.size_bytes),
         headers={"Content-Type": content_type.value},
         expires_in=settings.presigned_url_ttl_seconds,
     )
@@ -169,7 +169,7 @@ async def complete_upload(
     if info is None:
         raise bad_request("upload_not_found", "Chưa thấy file trên storage, hãy upload lại")
 
-    # Link presigned không giới hạn được dung lượng, nên kiểm tra lại file thật sau khi upload
+    # Link đã ký dung lượng và loại file; vẫn kiểm tra lại file thật, phòng storage không kiểm tra
     wrong_type = info.content_type is not None and info.content_type.lower() != media.mime_type
     if info.size_bytes > max_size_bytes(MediaKind(media.kind)) or wrong_type:
         await storage.delete(media.storage_key)

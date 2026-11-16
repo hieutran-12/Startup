@@ -186,7 +186,7 @@ const media = await api.post(`/invitations/${id}/media/${ticket.media_id}/comple
 
 - Ảnh: `image/jpeg`, `image/png`, `image/webp`, `image/avif`, tối đa 15 MB, 200 ảnh mỗi thiệp. Âm thanh: `audio/mpeg`, `audio/mp3`, `audio/mp4`, `audio/x-m4a`, tối đa 10 MB, 1 file mỗi thiệp.
 - Sai loại file hoặc quá dung lượng → 422; vượt số lượng → 400 `media_limit`. Số lượng tính cả file đang upload dở, nên đổi nhạc thì xoá file cũ trước.
-- Backend kiểm tra lại dung lượng và loại file thật ở bước 3, vì link presigned không giới hạn được dung lượng. Nên nén ảnh ở trình duyệt trước khi upload (ví dụ chuyển sang WebP, cạnh dài khoảng 2000px).
+- Link upload ký cả `Content-Type` và dung lượng đã khai báo (`size_bytes`): PUT file khác loại hoặc khác dung lượng bị storage từ chối 403, nên `size_bytes` phải đúng bằng `file.size` (trình duyệt tự gửi `Content-Length`). Backend vẫn kiểm tra lại file thật ở bước 3. Nên nén ảnh ở trình duyệt trước khi upload (ví dụ chuyển sang WebP, cạnh dài khoảng 2000px).
 - Gắn file vào thiệp bằng `PATCH /invitations/{invitation_id}`: `cover_media_id`, `groom_photo_media_id`, `bride_photo_media_id` nhận ảnh, `music_media_id` nhận âm thanh; ảnh của một mốc câu chuyện là `content.love_story[].media_id`. File chưa `ready`, sai loại hoặc của thiệp khác → 422 `invalid_reference`.
 - `DELETE /invitations/{invitation_id}/media/{media_id}` tự gỡ file khỏi mọi chỗ thiệp đang dùng (cột `*_media_id`, `love_story`).
 
@@ -248,7 +248,7 @@ docker compose -f docker-compose.prod.yml run --rm api python -m app.scripts.ini
 
 - **Biến môi trường (`.env`):** `API_DOMAIN`, `MEDIA_DOMAIN`; `POSTGRES_PASSWORD` (chỉ chữ và số, vì nằm trong URL kết nối); `JWT_SECRET` ngẫu nhiên ≥ 32 ký tự; `CORS_ORIGINS` là domain Next.js; `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` là tài khoản tự đặt cho RustFS; `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` trỏ tới route revalidate của Next.js. FE và API khác site thì đặt `COOKIE_SAMESITE=none`; tốt nhất là dùng chung domain gốc (`thiepcuoi.vn` và `api.thiepcuoi.vn`).
 - **Compose tự đặt:** `APP_ENV=production`, `COOKIE_SECURE=true`, `DATABASE_URL` (tới container `postgres`), `S3_ENDPOINT_URL=https://<MEDIA_DOMAIN>`, `S3_REGION=auto`, `MEDIA_PUBLIC_BASE_URL=https://<MEDIA_DOMAIN>/thiepcuoi-media`. Thiếu biến bắt buộc thì compose báo lỗi ngay; `JWT_SECRET` yếu thì API không khởi động.
-- **Caddy (`docker/Caddyfile`):** `API_DOMAIN` chuyển tới API (body tối đa 1 MB), `MEDIA_DOMAIN` chuyển tới RustFS (body tối đa 16 MB, vì link presigned không tự giới hạn được dung lượng). Trình duyệt PUT file thẳng lên `https://<MEDIA_DOMAIN>/thiepcuoi-media/...` và đọc file cũng ở đó.
+- **Caddy (`docker/Caddyfile`):** `API_DOMAIN` chuyển tới API (body tối đa 1 MB), `MEDIA_DOMAIN` chuyển tới RustFS (body tối đa 16 MB). Trình duyệt PUT file thẳng lên `https://<MEDIA_DOMAIN>/thiepcuoi-media/...` và đọc file cũng ở đó.
 - **`init_storage`:** tạo bucket, bật CORS theo `CORS_ORIGINS` và cho đọc công khai. Đổi `CORS_ORIGINS` thì chạy lại lệnh này.
 - **Kiểm tra:** `https://<API_DOMAIN>/health` trả `{"status": "ok"}`. Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
 

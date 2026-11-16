@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.errors import conflict, unauthorized
@@ -49,9 +50,11 @@ async def register(db: AsyncSession, data: RegisterRequest, user_agent: str | No
     if existing is not None:
         raise conflict("email_taken", "Email này đã được đăng ký")
 
+    # Argon2 tốn khoảng 50 ms CPU: chạy ở thread khác để không chặn các request đang chờ
+    password_hash = await run_in_threadpool(hash_password, data.password)
     user = User(
         email=data.email,
-        password_hash=hash_password(data.password),
+        password_hash=password_hash,
         full_name=data.full_name,
     )
     db.add(user)
@@ -65,7 +68,8 @@ async def register(db: AsyncSession, data: RegisterRequest, user_agent: str | No
 
 async def login(db: AsyncSession, data: LoginRequest, user_agent: str | None) -> AuthResult:
     user = await db.scalar(select(User).where(User.email == data.email))
-    if not verify_password(data.password, user.password_hash if user else None):
+    stored_hash = user.password_hash if user else None
+    if not await run_in_threadpool(verify_password, data.password, stored_hash):
         raise unauthorized("invalid_credentials", "Email hoặc mật khẩu không đúng")
     assert user is not None
     if not user.is_active:

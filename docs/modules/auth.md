@@ -36,5 +36,6 @@ Tài khoản (bảng `users`), phiên đăng nhập (bảng `refresh_tokens`), �
 - NFC cho mật khẩu: bàn phím macOS/iOS có thể gõ tiếng Việt ra NFD, Windows ra NFC. Tài khoản tạo trước ngày 2026-11-06 với mật khẩu dạng NFD (chỉ có trên DB dev) không đăng nhập được nữa.
 - `login` gọi `verify_password` với hash giả khi email không tồn tại, để thời gian phản hồi không lộ email nào đã đăng ký.
 - Refresh token không phải JWT; DB chỉ lưu hash. Hai request refresh trong 20 giây (`REUSE_GRACE_PERIOD`) chỉ bị từ chối, không thu hồi phiên.
+- `hash_password`, `verify_password` chạy qua `run_in_threadpool` (2026-11-16): Argon2 tốn khoảng 50 ms CPU, chạy thẳng trong event loop sẽ chặn mọi request khác.
 - Refresh token hết hạn không bị xoá (job dọn ngoài phạm vi v1, spec 07).
 - Test: `tests/test_auth.py` (luồng token, validation qua API), `tests/test_core_types.py` (`Email`, `Password`).

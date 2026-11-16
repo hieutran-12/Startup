@@ -55,7 +55,7 @@ def test_local_storage_uses_path_style_url(monkeypatch: pytest.MonkeyPatch) -> N
         s3_secret_access_key="thiepcuoi-secret",
     )
 
-    url = S3Storage().presign_put(KEY, "image/jpeg")
+    url = S3Storage().presign_put(KEY, "image/jpeg", 1234)
 
     parts = urlsplit(url)
     assert f"{parts.scheme}://{parts.netloc}" == "http://localhost:9000"
@@ -72,7 +72,7 @@ def test_aws_s3_uses_virtual_hosted_url_in_bucket_region(monkeypatch: pytest.Mon
         s3_secret_access_key="example-secret",
     )
 
-    url = S3Storage().presign_put(KEY, "image/jpeg")
+    url = S3Storage().presign_put(KEY, "image/jpeg", 1234)
 
     parts = urlsplit(url)
     assert parts.scheme == "https"
@@ -96,10 +96,25 @@ def test_aws_s3_without_keys_uses_default_credentials(monkeypatch: pytest.Monkey
         s3_secret_access_key=None,
     )
 
-    query = _query(S3Storage().presign_put(KEY, "image/jpeg"))
+    query = _query(S3Storage().presign_put(KEY, "image/jpeg", 1234))
 
     assert query["X-Amz-Credential"].startswith("ASIAROLEEXAMPLE/")
     assert query["X-Amz-Security-Token"] == "role-session-token"
+
+
+def test_presigned_url_signs_content_type_and_size(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Storage từ chối PUT khác loại hoặc khác dung lượng đã khai báo: cả hai header đều được ký."""
+    _use(
+        monkeypatch,
+        s3_endpoint_url="http://localhost:9000",
+        s3_region="auto",
+        s3_access_key_id="thiepcuoi",
+        s3_secret_access_key="thiepcuoi-secret",
+    )
+
+    query = _query(S3Storage().presign_put(KEY, "image/jpeg", 1234))
+
+    assert query["X-Amz-SignedHeaders"].split(";") == ["content-length", "content-type", "host"]
 
 
 def test_default_settings_point_to_local_storage() -> None:

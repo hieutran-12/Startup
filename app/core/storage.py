@@ -22,7 +22,7 @@ class ObjectInfo:
 
 
 class Storage(Protocol):
-    def presign_put(self, key: str, content_type: str) -> str: ...
+    def presign_put(self, key: str, content_type: str, size_bytes: int) -> str: ...
     async def head(self, key: str) -> ObjectInfo | None: ...
     async def delete(self, key: str) -> None: ...
     def public_url(self, key: str) -> str: ...
@@ -47,11 +47,18 @@ class S3Storage:
             config=Config(signature_version="s3v4", s3={"addressing_style": addressing_style}),
         )
 
-    def presign_put(self, key: str, content_type: str) -> str:
-        # Ký cả Content-Type: trình duyệt phải gửi đúng header này khi PUT, không đổi được loại file
+    def presign_put(self, key: str, content_type: str, size_bytes: int) -> str:
+        # Ký cả Content-Type và Content-Length: storage từ chối (403) khi PUT khác loại hoặc khác
+        # dung lượng đã khai báo, kể cả khi dùng lại link sau lúc đã xác nhận upload. Trình duyệt tự
+        # gửi Content-Length theo file, FE không phải đặt header này
         return self.client.generate_presigned_url(
             "put_object",
-            Params={"Bucket": self.bucket, "Key": key, "ContentType": content_type},
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+                "ContentType": content_type,
+                "ContentLength": size_bytes,
+            },
             ExpiresIn=settings.presigned_url_ttl_seconds,
             HttpMethod="PUT",
         )

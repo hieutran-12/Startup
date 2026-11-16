@@ -67,10 +67,10 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 ## Production trên VPS (2026-11-16, người dùng quyết định không dùng AWS)
 - `docker-compose.prod.yml`: Caddy (cổng 80, 443, tự xin chứng chỉ), `api` (build từ `Dockerfile`), `postgres`, `storage` (RustFS). Chỉ Caddy mở cổng ra ngoài. Compose tự đặt `APP_ENV`, `COOKIE_SECURE`, `DATABASE_URL`, `S3_ENDPOINT_URL=https://<MEDIA_DOMAIN>`, `S3_REGION=auto`, `S3_BUCKET`, `MEDIA_PUBLIC_BASE_URL`; `.env` chỉ giữ domain, secret, CORS, giới hạn. Thiếu biến bắt buộc thì compose báo lỗi.
 - Link presigned ký theo domain công khai của storage, nên API cũng phải gọi storage bằng domain đó: Caddy có network alias là `MEDIA_DOMAIN` để request này đi trong mạng nội bộ.
-- `docker/Caddyfile`: body tối đa 1 MB cho API, 16 MB cho storage (chặn ở proxy vì link presigned không giới hạn được dung lượng; ghi đè file sau `/complete` vẫn làm được trong mức 16 MB).
+- `docker/Caddyfile`: body tối đa 1 MB cho API, 16 MB cho storage (lớp chặn thứ hai; link presigned đã ký dung lượng, xem `media.md`).
 - `init_storage` chạy ở production khi có `S3_ENDPOINT_URL` (tạo bucket, CORS theo `CORS_ORIGINS`, đọc công khai `GetObject`); endpoint trống thì vẫn từ chối.
 - Đã chạy thử trong WSL với `API_DOMAIN=api.localhost`, `MEDIA_DOMAIN=media.localhost` (chứng chỉ nội bộ của Caddy, `curl -k`): migrate, seed, `/health` 200, `/docs` 404, http → https 308, body 2 MB → 413, đăng ký 201 với cookie `Secure`, PUT bằng link presigned 200 (sai Content-Type 403), đọc file công khai 200, liệt kê bucket 403, preflight CORS đúng origin. Chưa thử: VPS thật, chứng chỉ thật, API gọi storage qua alias với chứng chỉ thật (trong lần thử `init_storage` dùng `http://storage:9000`).
-- `rustfs/rustfs:latest` chưa ghim phiên bản (cả hai file compose). Sao lưu: hai volume `postgres-data`, `storage-data` (lệnh ở README).
+- RustFS ghim `rustfs/rustfs:1.0.4` ở cả hai file compose (cùng image với `latest` đã dùng tới 2026-11-16). Log container giới hạn 10 MB × 5 file. Sao lưu: hai volume `postgres-data`, `storage-data` (lệnh ở README).
 
 ## Storage với AWS S3 và image production (2026-11-09; code còn giữ, tài liệu không còn hướng dẫn AWS)
 - Có `S3_ENDPOINT_URL` (RustFS): `addressing_style="path"`, URL `endpoint/bucket/key`. Endpoint trống (AWS S3): `addressing_style="virtual"` ghi rõ, URL `https://<bucket>.s3.<region>.amazonaws.com/key`. Để mặc định thì botocore 1.43 ký presigned URL trên endpoint toàn cầu `<bucket>.s3.amazonaws.com`; bucket mới tạo ngoài us-east-1 bị 307, trình duyệt PUT qua CORS sẽ lỗi.

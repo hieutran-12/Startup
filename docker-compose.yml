@@ -18,7 +18,7 @@ services:
       retries: 10
 
   storage:
-    image: rustfs/rustfs:latest
+    image: rustfs/rustfs:1.0.4
     environment:
       RUSTFS_ACCESS_KEY: thiepcuoi
       RUSTFS_SECRET_KEY: thiepcuoi-secret

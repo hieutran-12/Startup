@@ -204,6 +204,17 @@ async def test_upload_ticket_signs_content_type(
     assert f"/invitations/{inv['id']}/{ticket['media_id']}.{extension}?" in ticket["upload_url"]
 
 
+async def test_upload_ticket_signs_declared_size(
+    client: AsyncClient, templates, auth, fake_storage
+) -> None:
+    """Link upload ký đúng dung lượng client khai báo, nên file thật không thể lớn hơn."""
+    inv = await _invitation(client, auth)
+    resp = await _request_upload(client, auth, inv["id"], content_type="image/png", size_bytes=4321)
+    assert resp.status_code == 200, resp.text
+    key = f"invitations/{inv['id']}/{resp.json()['media_id']}.png"
+    assert fake_storage.presigned == [(key, "image/png", 4321)]
+
+
 @pytest.mark.parametrize(("content_type", "extension"), AUDIO_TYPES)
 async def test_upload_audio_file(
     client: AsyncClient, templates, auth, fake_storage, content_type: str, extension: str

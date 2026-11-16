@@ -44,6 +44,7 @@ File của thiệp (bảng `media`, `kind` ảnh hoặc âm thanh) và album (b�
 - Xoá file: database đưa cột `*_media_id` về null (`ON DELETE SET NULL (<cột>)`); service gỡ `love_story[].media_id` và tăng revision qua `invitations.service.release_media`. Một file ở nhiều chỗ vẫn chỉ tăng revision 1. Sau flush phải `refresh` bốn cột vì ORM không biết SET NULL.
 - Hai test đồng thời (4 request âm thanh; PATCH gắn file vào love_story cùng lúc DELETE file đó) đã thử bỏ khóa: fail 3/3 lần.
 - Không có unique index cho "1 file âm thanh" (chốt Bước 2): khóa dòng thiệp giữ giới hạn.
+- Link upload ký cả `Content-Type` và `Content-Length` = `size_bytes` client khai báo (2026-11-16): storage trả 403 khi PUT khác dung lượng, kể cả dùng lại link sau `/complete` (đã thử trên RustFS 1.0.4: 100 byte đúng → 200; 50, 200 byte, 16 MB → 403). Trước đó ghi đè file lớn hơn giới hạn sau `/complete` là làm được. Vẫn ghi đè được bằng file khác cùng dung lượng, cùng loại trong 10 phút link còn hạn.
 - `storage.head` so `Content-Type` thật với `mime_type` (hạ chữ thường giá trị của storage khi so); file PUT với loại khác loại đã ký bị `invalid_upload`.
 - File pending không bao giờ được xác nhận vẫn nằm trong DB và storage (khung chưa có việc dọn, ngoài phạm vi v1).
 - Giữ index `ix_media_album_id`, `ix_media_invitation_position`, `ix_albums_invitation_id` của khung. `PATCH` album vẫn cho đặt `position` tùy ý như khung.

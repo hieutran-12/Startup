@@ -38,8 +38,10 @@ class FakeStorage:
     def __init__(self) -> None:
         self.objects: dict[str, ObjectInfo] = {}
         self.deleted: list[str] = []
+        self.presigned: list[tuple[str, str, int]] = []  # (key, content_type, size_bytes)
 
-    def presign_put(self, key: str, content_type: str) -> str:
+    def presign_put(self, key: str, content_type: str, size_bytes: int) -> str:
+        self.presigned.append((key, content_type, size_bytes))
         return f"https://storage.test/{key}?X-Amz-Signature=fake"
 
     async def head(self, key: str) -> ObjectInfo | None:
