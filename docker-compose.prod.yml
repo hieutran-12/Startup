@@ -1,7 +1,10 @@
-# Production trên một VPS: Caddy (HTTPS) + API + PostgreSQL + RustFS. Hướng dẫn: README › Lên production.
-#   cp .env.production.example .env        rồi điền giá trị
-#   docker compose -f docker-compose.prod.yml up -d --build
-# Chỉ Caddy mở cổng ra ngoài (80, 443). PostgreSQL và RustFS chỉ nghe trong mạng nội bộ của compose.
+# Production trên AWS EC2. Hướng dẫn: README › Lên production.
+#   Internet → Nginx (trên EC2, docker/nginx-api.conf) → API (container này, 127.0.0.1:8000)
+#   Database: RDS PostgreSQL. File: S3 private, đọc qua CloudFront.
+# Trên EC2, trong thư mục chứa file này và .env:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+
 # Giới hạn log của mỗi container (mặc định Docker ghi không giới hạn, lâu ngày đầy ổ đĩa)
 x-logging: &logging
   driver: json-file
@@ -10,79 +13,33 @@ x-logging: &logging
     max-file: "5"
 
 services:
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    logging: *logging
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      API_DOMAIN: ${API_DOMAIN:?Thieu API_DOMAIN trong .env}
-      MEDIA_DOMAIN: ${MEDIA_DOMAIN:?Thieu MEDIA_DOMAIN trong .env}
-    volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data      # chứng chỉ HTTPS: mất volume này thì Caddy phải xin lại
-      - caddy-config:/config
-    networks:
-      default:
-        # API gọi storage bằng đúng domain công khai (URL presigned ký theo domain này); alias giữ
-        # request đó đi trong mạng nội bộ thay vì vòng ra Internet
-        aliases:
-          - ${MEDIA_DOMAIN}
-    depends_on:
-      - api
-      - storage
-
   api:
-    build: .
+    # Image on ECR, tag  = commit hash (Put in .env)
+    image: ${API_IMAGE:?Thieu API_IMAGE trong .env}
     restart: unless-stopped
     logging: *logging
+    # Only Nginx on the same EC2 can reach the API. Port 8000 is not open to the Internet.
+    ports:
+      - "127.0.0.1:8000:8000"
     env_file: .env
+    # Values here win over .env, so do not put these keys in .env
     environment:
       APP_ENV: production
       COOKIE_SECURE: "true"
-      # Mật khẩu chỉ gồm chữ và số (nằm trong URL); host là tên service trong compose
-      DATABASE_URL: postgresql+asyncpg://thiepcuoi:${POSTGRES_PASSWORD:?Thieu POSTGRES_PASSWORD trong .env}@postgres:5432/thiepcuoi
-      S3_ENDPOINT_URL: https://${MEDIA_DOMAIN}
-      S3_REGION: auto
-      S3_BUCKET: thiepcuoi-media
-      MEDIA_PUBLIC_BASE_URL: https://${MEDIA_DOMAIN}/thiepcuoi-media
-    depends_on:
-      postgres:
-        condition: service_healthy
-
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    logging: *logging
-    environment:
-      POSTGRES_USER: thiepcuoi
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: thiepcuoi
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # Stop early if .env misses one (the app defaults point to localhost)
+      DATABASE_URL: ${DATABASE_URL:?Thieu DATABASE_URL trong .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Thieu CORS_ORIGINS trong .env}
+      S3_BUCKET: ${S3_BUCKET:?Thieu S3_BUCKET trong .env}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?Thieu MEDIA_PUBLIC_BASE_URL trong .env}
+      # AWS S3: no endpoint and no keys -> boto3 uses the IAM role of the EC2 instance.
+      # The EC2 metadata "hop limit" must be 2, or the container cannot get the role.
+      S3_ENDPOINT_URL: ""
+      S3_ACCESS_KEY_ID: ""
+      S3_SECRET_ACCESS_KEY: ""
+      S3_REGION: ap-southeast-2
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U thiepcuoi -d thiepcuoi"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
-  storage:
-    image: rustfs/rustfs:1.0.4
-    restart: unless-stopped
-    logging: *logging
-    environment:
-      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?Thieu S3_ACCESS_KEY_ID trong .env}
-      RUSTFS_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?Thieu S3_SECRET_ACCESS_KEY trong .env}
-      RUSTFS_ADDRESS: ":9000"
-      RUSTFS_CONSOLE_ENABLE: "false"
-      RUSTFS_OBS_LOGGER_LEVEL: error
-    volumes:
-      - storage-data:/data
-
-volumes:
-  caddy-data:
-  caddy-config:
-  postgres-data:
-  storage-data:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
