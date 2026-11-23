@@ -2,7 +2,7 @@
 
     uv run python -m app.scripts.init_storage
 
-Dùng cho cả local và production trên VPS (README › Lên production). Chạy lại nhiều lần vẫn đúng.
+Dùng cho local, hoặc production tự chạy storage riêng. Chạy lại nhiều lần vẫn đúng.
 Không chạy khi `S3_ENDPOINT_URL` trống (khi đó client trỏ tới AWS S3): script sẽ mở đọc công khai
 cho một bucket không do mình dựng.
 """

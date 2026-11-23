@@ -1,7 +1,7 @@
 # core
 
 ## Mục đích
-Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`. 2026-11-06: kiểu `Email`, `Password` cho auth. 2026-11-09: storage chạy với AWS S3 (IAM role), `Dockerfile`. 2026-11-16: production trên VPS (`docker-compose.prod.yml`, Caddy).
+Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook revalidate. Bước 1: tầng chuẩn hóa dữ liệu request, định dạng lỗi chung. Bước 2: migration 0001 viết lại. Bước 4: Merge Patch, ETag/If-Match. Bước 5: kiểu tọa độ, URL; `max_events_per_invitation`. Bước 7: giới hạn upload theo loại file trong `config.py`. 2026-11-06: kiểu `Email`, `Password` cho auth. 2026-11-09: storage chạy với AWS S3 (IAM role), `Dockerfile`. 2026-11-16: production trên VPS (đã bỏ). 2026-11-23: production trên AWS EC2.
 
 ## File code chính
 - `app/core/types.py`: kiểu Annotated chuẩn hóa và kiểm tra dữ liệu request (Bước 1; `Latitude`, `Longitude`, `HttpUrl` ở Bước 5)
@@ -17,7 +17,7 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `storage.py`: giữ từ khung; 2026-11-09 chọn kiểu địa chỉ theo endpoint (xem mục Storage)
 - `security.py`, `deps.py`, `revalidate.py`: giữ từ khung
 - `Dockerfile`, `.dockerignore` ở gốc repo (2026-11-09): image production, mô tả ở README › Lên production
-- `docker-compose.prod.yml`, `docker/Caddyfile`, `.env.production.example` (2026-11-16): production trên một VPS
+- `docker-compose.prod.yml`, `.env.production.example`, `docker/nginx-api.conf`, `docker/ec2-user-data.sh`: production trên AWS EC2 (2026-11-23)
 
 ## API công khai
 - `enum_check(column, StrEnum)`: chuỗi `<cột> IN ('a', 'b')` cho `CheckConstraint`; tên CHECK đặt dạng `name="<cột>_valid"`, convention thêm tiền tố `ck_<bảng>_`
@@ -64,15 +64,17 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - `field`: `content.love_story[0].title`; lỗi không gắn với trường (JSON hỏng, body không phải object, thiếu body) → `""`
 - Lỗi tham chiếu chéo trong `model_validator`: gom `field_error(loc, code, message, value)` rồi raise `ValidationError.from_exception_data(...)`; Pydantic giữ `loc` của từng lỗi và nối tiền tố bên ngoài. Ví dụ: `TemplateManifest`, `Appearance`, `LoveStoryItem`. Validator cần dữ liệu ngoài (manifest) thì đọc `info.context`
 
-## Production trên VPS (2026-11-16, người dùng quyết định không dùng AWS)
-- `docker-compose.prod.yml`: Caddy (cổng 80, 443, tự xin chứng chỉ), `api` (build từ `Dockerfile`), `postgres`, `storage` (RustFS). Chỉ Caddy mở cổng ra ngoài. Compose tự đặt `APP_ENV`, `COOKIE_SECURE`, `DATABASE_URL`, `S3_ENDPOINT_URL=https://<MEDIA_DOMAIN>`, `S3_REGION=auto`, `S3_BUCKET`, `MEDIA_PUBLIC_BASE_URL`; `.env` chỉ giữ domain, secret, CORS, giới hạn. Thiếu biến bắt buộc thì compose báo lỗi.
-- Link presigned ký theo domain công khai của storage, nên API cũng phải gọi storage bằng domain đó: Caddy có network alias là `MEDIA_DOMAIN` để request này đi trong mạng nội bộ.
-- `docker/Caddyfile`: body tối đa 1 MB cho API, 16 MB cho storage (lớp chặn thứ hai; link presigned đã ký dung lượng, xem `media.md`).
-- `init_storage` chạy ở production khi có `S3_ENDPOINT_URL` (tạo bucket, CORS theo `CORS_ORIGINS`, đọc công khai `GetObject`); endpoint trống thì vẫn từ chối.
-- Đã chạy thử trong WSL với `API_DOMAIN=api.localhost`, `MEDIA_DOMAIN=media.localhost` (chứng chỉ nội bộ của Caddy, `curl -k`): migrate, seed, `/health` 200, `/docs` 404, http → https 308, body 2 MB → 413, đăng ký 201 với cookie `Secure`, PUT bằng link presigned 200 (sai Content-Type 403), đọc file công khai 200, liệt kê bucket 403, preflight CORS đúng origin. Chưa thử: VPS thật, chứng chỉ thật, API gọi storage qua alias với chứng chỉ thật (trong lần thử `init_storage` dùng `http://storage:9000`).
-- RustFS ghim `rustfs/rustfs:1.0.4` ở cả hai file compose (cùng image với `latest` đã dùng tới 2026-11-16). Log container giới hạn 10 MB × 5 file. Sao lưu: hai volume `postgres-data`, `storage-data` (lệnh ở README).
+## Production trên AWS EC2 (2026-11-23, người dùng chốt hướng này)
+- Dựng bằng AWS CLI, bảng tài nguyên ở README › Lên production: EC2 `t4g.small` Ubuntu 24.04 arm64 có Nginx trên máy, container API lấy image từ ECR (`docker-compose.prod.yml`), RDS PostgreSQL 16.15 `db.t4g.micro`, S3 `thiepcuoi-media-prod` sau CloudFront (OAC), IAM role `thiepcuoi-api-ec2-role`, secret ở SSM Parameter Store. Không đổi model, migration, endpoint, spec. Bản VPS 2026-11-16 (Caddy, PostgreSQL và RustFS trong compose) đã bỏ ở commit `4c91757`, `49caf62`.
+- Gói Free của AWS chỉ cho giữ backup RDS 1 ngày (đặt 7 thì `FreeTierRestrictionError`).
+- IAM role có `s3:ListBucket` trên bucket: thiếu quyền này thì `HeadObject` cho file chưa upload trả 403 thay vì 404, `storage.head` raise và `/complete` thành 500.
+- Container lấy quyền IAM qua IMDSv2 nên EC2 đặt hop limit 2 (mặc định 1 thì request từ container không tới được metadata).
+- Image build arm64 trên Mac (Colima) 160 MB, chạy thẳng trên Graviton.
+- Đã chạy thử trên production (HTTP qua Elastic IP): link presigned ký `Content-Length` trên AWS S3 thật đúng như RustFS (đúng dung lượng 200; thừa 1 byte, sai dung lượng, sai loại 403; dùng lại link cùng dung lượng và loại vẫn 200, việc treo đã biết); preflight CORS của bucket đúng origin; đăng ký → tạo thiệp → sự kiện → upload → `/complete` → gắn ảnh bìa → publish → trang public (`?side=groom`, âm lịch) → đọc ảnh qua CloudFront 200, đọc thẳng S3 403 → xoá ảnh, xoá thiệp. Dữ liệu thử đã xoá. Log có IP thật của client (Nginx đặt `X-Forwarded-For`).
+- File đã xoá vẫn được CloudFront trả từ cache tới 24 giờ (TTL mặc định của `CachingOptimized`); code chưa tạo invalidation.
+- Chưa làm: domain, HTTPS (certbot), CORS theo domain Next.js, revalidate.
 
-## Storage với AWS S3 và image production (2026-11-09; code còn giữ, tài liệu không còn hướng dẫn AWS)
+## Storage với AWS S3 và image production (2026-11-09)
 - Có `S3_ENDPOINT_URL` (RustFS): `addressing_style="path"`, URL `endpoint/bucket/key`. Endpoint trống (AWS S3): `addressing_style="virtual"` ghi rõ, URL `https://<bucket>.s3.<region>.amazonaws.com/key`. Để mặc định thì botocore 1.43 ký presigned URL trên endpoint toàn cầu `<bucket>.s3.amazonaws.com`; bucket mới tạo ngoài us-east-1 bị 307, trình duyệt PUT qua CORS sẽ lỗi.
 - Hai key đều `None`: boto3 lấy quyền theo chuỗi mặc định (biến môi trường `AWS_*`, task role của ECS, instance profile của EC2). Test dùng biến môi trường `AWS_*` thay cho IAM role.
 - `check_storage_settings` (app không khởi động nếu sai): chỉ đặt một trong hai key → lỗi; endpoint trống mà `S3_REGION` vẫn là `auto` → lỗi (`auto` chỉ hợp với storage tự đặt endpoint).

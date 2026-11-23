@@ -29,15 +29,15 @@ class Settings(BaseSettings):
     # CORS: danh sách origin của Next.js, phân tách bằng dấu phẩy trong .env
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
 
-    # Object storage (S3 API): RustFS, ở local (docker-compose) và ở production trên VPS
-    # (docker-compose.prod.yml). Code vẫn chạy được với AWS S3: để trống S3_ENDPOINT_URL,
-    # S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (dùng IAM role) và đặt S3_REGION là region của bucket
+    # Object storage (S3 API): RustFS ở local (docker-compose). Production dùng AWS S3: để trống
+    # S3_ENDPOINT_URL, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY (dùng IAM role) và đặt S3_REGION là
+    # region của bucket (docker-compose.prod.yml tự đặt)
     s3_endpoint_url: str | None = "http://localhost:9000"
     s3_region: str = "auto"
     s3_access_key_id: str | None = "thiepcuoi"
     s3_secret_access_key: str | None = "thiepcuoi-secret"
     s3_bucket: str = "thiepcuoi-media"
-    # URL công khai để đọc ảnh (production: https://<MEDIA_DOMAIN>/<bucket>).
+    # URL công khai để đọc ảnh (production: domain CloudFront trước bucket, không kèm tên bucket).
     # Link ảnh = media_public_base_url + "/" + storage_key
     media_public_base_url: str = "http://localhost:9000/thiepcuoi-media"
     presigned_url_ttl_seconds: int = 600

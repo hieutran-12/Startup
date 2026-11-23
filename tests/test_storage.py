@@ -1,4 +1,4 @@
-"""Client S3 chạy được với storage tự chạy (RustFS, local và VPS) và với AWS S3 dùng IAM role.
+"""Client S3 chạy được với storage tự chạy (RustFS) và với AWS S3 dùng IAM role.
 
 Không gọi mạng: chỉ tạo client và ký presigned URL.
 """
@@ -160,7 +160,7 @@ def test_init_storage_refuses_aws_s3(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_init_storage_runs_in_production_with_own_endpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Production trên VPS dùng storage tự chạy (có endpoint): script vẫn phải tạo được bucket."""
+    """Production dùng storage tự chạy (có endpoint): script vẫn phải tạo được bucket."""
 
     class FakeClient:
         def __init__(self) -> None:
