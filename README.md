@@ -232,7 +232,7 @@ Sự kiện và các ảnh, nhạc cố định không nằm trong `content`. Tr
 Production chạy trên AWS, region `ap-southeast-2` (Sydney), dựng ngày 2026-11-23.
 
 ```text
-Trình duyệt ──> Nginx (trên EC2) ──> container API :8000 ──> RDS PostgreSQL
+Trình duyệt ──HTTPS──> Nginx (trên EC2) ──> container API :8000 ──> RDS PostgreSQL
     │                                     │ IAM role của EC2: ký link upload, kiểm tra, xoá file
     ├── PUT bằng link presigned ──> S3 (private) <──┘
     └── GET ảnh, nhạc ──> CloudFront ── OAC ──> S3
@@ -241,7 +241,7 @@ Trình duyệt ──> Nginx (trên EC2) ──> container API :8000 ──> RDS
 | Thành phần | Dịch vụ AWS | Tên |
 | --- | --- | --- |
 | Máy chạy API | EC2 `t4g.small` (Ubuntu 24.04 arm64), Elastic IP, CPU credit `standard`, IMDSv2 với hop limit 2 | `thiepcuoi-api` |
-| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`), body API tối đa 1 MB | |
+| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`), body API tối đa 1 MB, HTTPS bằng Let's Encrypt | `thiepcuoi-api.duckdns.org` |
 | Image API | ECR, tag là commit hash, không ghi đè tag, giữ 10 image mới nhất | `thiepcuoi-api` |
 | Database | RDS PostgreSQL 16 `db.t4g.micro`, không mở ra Internet, mã hoá, chống xoá nhầm, backup tự động giữ 1 ngày | `thiepcuoi-db` |
 | File | S3 chặn truy cập công khai, SSE-S3, không bật versioning, CORS cho domain Next.js | `thiepcuoi-media-prod` |
@@ -281,13 +281,19 @@ sudo docker compose -f docker-compose.prod.yml up -d
 
 Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
 
-**Gắn domain và HTTPS** (chưa làm: chưa có domain; API đang nhận HTTP qua Elastic IP)
+**Domain và HTTPS**
 
-1. Bản ghi A của domain API (ví dụ `api.thiepcuoi.vn`) trỏ về Elastic IP của EC2.
-2. Trên EC2, trong `/etc/nginx/conf.d/thiepcuoi-api.conf`: đổi `server_name _;` thành domain đó, bỏ `default_server`. Rồi `sudo apt install -y certbot python3-certbot-nginx` và `sudo certbot --nginx -d api.thiepcuoi.vn`.
-3. Đổi `CORS_ORIGINS` trong `.env` và `AllowedOrigins` trong CORS của bucket sang domain Next.js (hiện là `http://localhost:3000`). FE và API khác site thì `COOKIE_SAMESITE=none`. Điền `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` khi Next.js có route revalidate. Sửa `.env` xong chạy lại `sudo docker compose -f docker-compose.prod.yml up -d`.
+API hiện ở `https://thiepcuoi-api.duckdns.org`: subdomain miễn phí của DuckDNS trỏ về Elastic IP, chứng chỉ Let's Encrypt do certbot cấp (`certbot --nginx --redirect`) và tự gia hạn (`certbot.timer`). Gọi bằng `http://` được chuyển sang `https://`. Elastic IP không đổi nên không cần chạy trình cập nhật IP của DuckDNS.
 
-Chưa có HTTPS thì trình duyệt không lưu cookie `refresh_token` (cookie có cờ `Secure`).
+Khi mua domain thật:
+
+1. Bản ghi A của domain API (ví dụ `api.thiepcuoi.vn`) trỏ về Elastic IP.
+2. Trên EC2: thêm domain vào `server_name` trong `/etc/nginx/conf.d/thiepcuoi-api.conf`, rồi `sudo certbot --nginx -d api.thiepcuoi.vn --redirect`.
+3. Đặt web Next.js cùng domain gốc (ví dụ `thiepcuoi.vn`), rồi đổi `COOKIE_SAMESITE` về `lax`.
+
+`CORS_ORIGINS` trong `.env` và `AllowedOrigins` trong CORS của bucket phải có domain của web Next.js (hiện chỉ có `http://localhost:3000`). Điền `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` khi Next.js có route revalidate. Sửa `.env` xong chạy lại `sudo docker compose -f docker-compose.prod.yml up -d`.
+
+**Cookie khi web và API khác domain gốc:** hiện đặt `COOKIE_SAMESITE=none` để web ở domain khác (kể cả `localhost:3000`) vẫn giữ được cookie `refresh_token`. Safari chặn loại cookie này, nên người dùng Safari bị đăng xuất khi tải lại trang; khi thử thì dùng Chrome. Hết khi web và API chung domain gốc.
 
 **Kiểm tra:** `/health` trả `{"status": "ok"}`; Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
 

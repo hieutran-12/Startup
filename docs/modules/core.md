@@ -72,7 +72,8 @@ Hạ tầng dùng chung: cấu hình, database, bảo mật, storage, webhook re
 - Image build arm64 trên Mac (Colima) 160 MB, chạy thẳng trên Graviton.
 - Đã chạy thử trên production (HTTP qua Elastic IP): link presigned ký `Content-Length` trên AWS S3 thật đúng như RustFS (đúng dung lượng 200; thừa 1 byte, sai dung lượng, sai loại 403; dùng lại link cùng dung lượng và loại vẫn 200, việc treo đã biết); preflight CORS của bucket đúng origin; đăng ký → tạo thiệp → sự kiện → upload → `/complete` → gắn ảnh bìa → publish → trang public (`?side=groom`, âm lịch) → đọc ảnh qua CloudFront 200, đọc thẳng S3 403 → xoá ảnh, xoá thiệp. Dữ liệu thử đã xoá. Log có IP thật của client (Nginx đặt `X-Forwarded-For`).
 - File đã xoá vẫn được CloudFront trả từ cache tới 24 giờ (TTL mặc định của `CachingOptimized`); code chưa tạo invalidation.
-- Chưa làm: domain, HTTPS (certbot), CORS theo domain Next.js, revalidate.
+- 2026-11-24, chưa có tiền mua domain: HTTPS qua subdomain miễn phí DuckDNS `thiepcuoi-api.duckdns.org` (trỏ về Elastic IP) + Let's Encrypt (`certbot --nginx --redirect`, không đăng ký email, `certbot.timer`, gia hạn thử `--dry-run` thành công); http → https 301. `COOKIE_SAMESITE=none` để web khác domain giữ được cookie (Safari vẫn chặn cookie bên thứ ba). Chạy lại luồng thử qua https: đúng; cookie `HttpOnly; Path=/auth; SameSite=none; Secure`; `POST /auth/refresh` bằng cookie 200. Dữ liệu thử đã xoá.
+- Chưa làm: domain thật (web và API chung domain gốc, `COOKIE_SAMESITE=lax`), CORS theo domain Next.js, revalidate.
 
 ## Storage với AWS S3 và image production (2026-11-09)
 - Có `S3_ENDPOINT_URL` (RustFS): `addressing_style="path"`, URL `endpoint/bucket/key`. Endpoint trống (AWS S3): `addressing_style="virtual"` ghi rõ, URL `https://<bucket>.s3.<region>.amazonaws.com/key`. Để mặc định thì botocore 1.43 ký presigned URL trên endpoint toàn cầu `<bucket>.s3.amazonaws.com`; bucket mới tạo ngoài us-east-1 bị 307, trình duyệt PUT qua CORS sẽ lỗi.
