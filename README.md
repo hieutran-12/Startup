@@ -2,7 +2,7 @@
 
 Backend v1 cho dịch vụ thiệp cưới online. Cặp đôi đăng ký tài khoản, chọn mẫu thiệp, nhập nội dung, sự kiện, ảnh và nhạc nền rồi đăng thiệp lên một đường dẫn riêng (`thiepcuoi.vn/nam-lan`). Một thiệp dùng chung cho hai bên gia đình; khách mở link chung hoặc link riêng của nhà trai, nhà gái. Trang thiệp public do Next.js render.
 
-**Stack:** Python 3.13 · FastAPI · Pydantic (strict) · SQLAlchemy 2.0 async · PostgreSQL ≥ 15 (docker-compose dùng 16) · Alembic · S3 API (RustFS ở local, AWS S3 ở production) · uv · pytest · ruff · Docker · AWS (EC2, RDS, S3, CloudFront, ECR) cho production
+**Stack:** Python 3.13 · FastAPI · Pydantic (strict) · SQLAlchemy 2.0 async · PostgreSQL ≥ 15 (docker-compose dùng 16) · Alembic · S3 API (RustFS ở local, AWS S3 ở production) · uv · pytest · ruff · Docker · AWS (EC2, RDS, S3, CloudFront, ECR; web trên Amplify) cho production
 
 ## Tài liệu
 
@@ -229,10 +229,11 @@ Sự kiện và các ảnh, nhạc cố định không nằm trong `content`. Tr
 
 ## Lên production
 
-Production chạy trên AWS, region `ap-southeast-2` (Sydney), dựng ngày 2026-11-23.
+Production chạy trên AWS, region `ap-southeast-2` (Sydney). API dựng ngày 2026-11-23; domain `ketduyen.me` và web gắn ngày 2026-11-24.
 
 ```text
-Trình duyệt ──HTTPS──> Nginx (trên EC2) ──> container API :8000 ──> RDS PostgreSQL
+GitHub SuperProject (main) ──push──> Amplify build my-fe-app ──> https://ketduyen.me (web, SPA)
+Trình duyệt ──HTTPS──> https://api.ketduyen.me: Nginx (trên EC2) ──> container API :8000 ──> RDS PostgreSQL
     │                                     │ IAM role của EC2: ký link upload, kiểm tra, xoá file
     ├── PUT bằng link presigned ──> S3 (private) <──┘
     └── GET ảnh, nhạc ──> CloudFront ── OAC ──> S3
@@ -241,14 +242,16 @@ Trình duyệt ──HTTPS──> Nginx (trên EC2) ──> container API :8000 
 | Thành phần | Dịch vụ AWS | Tên |
 | --- | --- | --- |
 | Máy chạy API | EC2 `t4g.small` (Ubuntu 24.04 arm64), Elastic IP, CPU credit `standard`, IMDSv2 với hop limit 2 | `thiepcuoi-api` |
-| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`), body API tối đa 1 MB, HTTPS bằng Let's Encrypt | `thiepcuoi-api.duckdns.org` |
+| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`), body API tối đa 1 MB, HTTPS bằng Let's Encrypt | `api.ketduyen.me` |
 | Image API | ECR, tag là commit hash, không ghi đè tag, giữ 10 image mới nhất | `thiepcuoi-api` |
 | Database | RDS PostgreSQL 16 `db.t4g.micro`, không mở ra Internet, mã hoá, chống xoá nhầm, backup tự động giữ 1 ngày | `thiepcuoi-db` |
-| File | S3 chặn truy cập công khai, SSE-S3, không bật versioning, CORS cho domain Next.js | `thiepcuoi-media-prod` |
+| File | S3 chặn truy cập công khai, SSE-S3, không bật versioning, CORS cho `https://ketduyen.me` và `http://localhost:5173` | `thiepcuoi-media-prod` |
 | Đọc file công khai | CloudFront với Origin Access Control; bucket policy chỉ cho distribution này `s3:GetObject` | |
 | Quyền của API | IAM role của EC2: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` trên file, `s3:ListBucket` trên bucket (để file chưa upload trả 404, không phải 403), kéo image ECR, SSM | `thiepcuoi-api-ec2-role` |
 | Secret | SSM Parameter Store, SecureString | `/thiepcuoi/prod/DB_PASSWORD`, `/thiepcuoi/prod/JWT_SECRET` |
 | Tường lửa | API mở 80, 443 (SSH chỉ một IP); database chỉ nhận cổng 5432 từ group của API | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
+| Web | Amplify Hosting nối repo GitHub `HuongNguyenQuoc/SuperProject`, nhánh `main`, thư mục `my-fe-app`. Push là tự build (`yarn run build`, thư mục `dist`) và deploy. Biến `VITE_API_URL=https://api.ketduyen.me`; chứng chỉ do Amplify cấp | `ketduyen-web` |
+| Domain | Namecheap, DNS BasicDNS, hết hạn 2027-11-24 | `ketduyen.me` |
 
 **Trên EC2**
 
@@ -283,17 +286,36 @@ Khi đã có dữ liệu production, đổi model thì thêm migration mới (`u
 
 **Domain và HTTPS**
 
-API hiện ở `https://thiepcuoi-api.duckdns.org`: subdomain miễn phí của DuckDNS trỏ về Elastic IP, chứng chỉ Let's Encrypt do certbot cấp (`certbot --nginx --redirect`) và tự gia hạn (`certbot.timer`). Gọi bằng `http://` được chuyển sang `https://`. Elastic IP không đổi nên không cần chạy trình cập nhật IP của DuckDNS.
+DNS của `ketduyen.me` nằm ở Namecheap › Advanced DNS:
 
-Khi mua domain thật:
+| Bản ghi | Giá trị | Dùng cho |
+| --- | --- | --- |
+| A `api` | Elastic IP của EC2 | API; chứng chỉ Let's Encrypt do certbot cấp trên EC2 (`certbot --nginx --redirect`), tự gia hạn (`certbot.timer`) |
+| ALIAS `@` | domain CloudFront do Amplify cấp (`aws amplify get-domain-association`) | web |
+| CNAME `www` | như dòng trên | web; Amplify chuyển 301 về `https://ketduyen.me` |
+| CNAME `_<mã>` | `_<mã>.acm-validations.aws.` | Amplify xác minh và gia hạn chứng chỉ của web; không xoá |
 
-1. Bản ghi A của domain API (ví dụ `api.thiepcuoi.vn`) trỏ về Elastic IP.
-2. Trên EC2: thêm domain vào `server_name` trong `/etc/nginx/conf.d/thiepcuoi-api.conf`, rồi `sudo certbot --nginx -d api.thiepcuoi.vn --redirect`.
-3. Đặt web Next.js cùng domain gốc (ví dụ `thiepcuoi.vn`), rồi đổi `COOKIE_SAMESITE` về `lax`.
+- Chứng chỉ của API cũng phủ tên cũ `thiepcuoi-api.duckdns.org` (DuckDNS miễn phí, dùng trước khi có domain).
+  - Muốn bỏ tên cũ: xoá nó khỏi `server_name`, rồi cấp lại bằng `sudo certbot --nginx --cert-name api.ketduyen.me -d api.ketduyen.me --redirect`.
+- Rule của Amplify (`aws amplify update-app --custom-rules`), theo thứ tự:
+  1. `https://www.ketduyen.me` → `https://ketduyen.me` (301).
+     - Rule theo domain không được có đường dẫn (`/<*>`): có thì Amplify bỏ qua rule mà không báo lỗi. Đường dẫn được tự nối vào.
+  2. Đường dẫn không phải file tĩnh → `/index.html` (200).
+     - Dùng regex SPA trong tài liệu Amplify, thêm các đuôi `jpeg`, `otf`, `eot`, `avif`, `mp4`, `webm`, `mp3`, `m4a`, `xml`, `webmanifest`, `pdf`.
+     - Không dùng được rule mặc định `/<*>` → `/index.html` (`404-200`): tải lại `/mau-thiep/royal-blue` bị 301 thêm `/` rồi ra 404.
+  - **Đổi rule xong phải deploy lại nhánh `main`**: console › Redeploy this version, hoặc `aws amplify start-job --job-type RELEASE`.
+    - Lý do: CDN của Amplify giữ trang đã trả (`s-maxage` 1 năm, cache riêng theo kiểu nén) tới lần deploy kế tiếp.
+    - Lỗi đã gặp: Chrome vẫn nhận trang cũ ở `www`, còn file CSS ở `www` bị chuyển sang domain khác. Thẻ CSS của Vite có `crossorigin`, nên Chrome chặn file CSS và trang mất giao diện.
+- Gia hạn domain trước 2027-11-24. Năm đầu miễn phí qua GitHub Student Pack.
 
-`CORS_ORIGINS` trong `.env` và `AllowedOrigins` trong CORS của bucket phải có domain của web Next.js (hiện chỉ có `http://localhost:3000`). Điền `FRONTEND_REVALIDATE_URL`, `FRONTEND_REVALIDATE_SECRET` khi Next.js có route revalidate. Sửa `.env` xong chạy lại `sudo docker compose -f docker-compose.prod.yml up -d`.
+**Cookie và CORS**
 
-**Cookie khi web và API khác domain gốc:** hiện đặt `COOKIE_SAMESITE=none` để web ở domain khác (kể cả `localhost:3000`) vẫn giữ được cookie `refresh_token`. Safari chặn loại cookie này, nên người dùng Safari bị đăng xuất khi tải lại trang; khi thử thì dùng Chrome. Hết khi web và API chung domain gốc.
+- Web và API cùng domain gốc `ketduyen.me`, nên `COOKIE_SAMESITE=lax`. Safari vẫn giữ được cookie `refresh_token`.
+- `.env` đặt `CORS_ORIGINS=https://ketduyen.me`. CORS của bucket cho `https://ketduyen.me` và `http://localhost:5173`.
+- Web chạy trên máy dev gọi API qua proxy của Vite (`/api`, đổi `Path` của cookie từ `/auth` thành `/api/auth`). Hướng dẫn ở `docs/backend.md` của repo web.
+- Địa chỉ mặc định của Amplify (`*.amplifyapp.com`) không gọi được API, vì khác domain gốc.
+- `FRONTEND_REVALIDATE_URL` để trống: web hiện là Vite SPA, chưa có route revalidate.
+- Sửa `.env` xong chạy lại `sudo docker compose -f docker-compose.prod.yml up -d`.
 
 **Kiểm tra:** `/health` trả `{"status": "ok"}`; Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
 

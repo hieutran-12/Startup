@@ -8,7 +8,7 @@ Trạng thái ngày **24/11/2026**. Dành cho AI hoặc người mới mở repo
 - **Backend (repo này):** xong cả 11 bước kế hoạch (spec 06). 765/765 test qua, ruff sạch. Production chạy trên AWS từ 23/11/2026.
 - **Web:** repo riêng, Vite SPA, **chưa nối API** (đăng nhập còn giả lập).
 - **Chưa có người dùng thật.** Database production chỉ có 4 mẫu thiệp đã seed.
-- **Domain:** `ketduyen.me` (Namecheap, miễn phí 1 năm qua GitHub Student Pack, hết hạn 24/11/2027). Đang gắn: web lên AWS Amplify ở `ketduyen.me`, API ở `api.ketduyen.me`. Tiến độ ở mục 9.
+- **Domain:** `ketduyen.me` (Namecheap, miễn phí 1 năm qua GitHub Student Pack, hết hạn 24/11/2027). Đã gắn xong ngày 24/11: web trên AWS Amplify ở `https://ketduyen.me`, API ở `https://api.ketduyen.me` (mục 7).
 - Tên thương hiệu chưa chốt: web đang để "Vows", định đổi thành "Chung Đôi" (`my-fe-app/src/config/site.ts`).
 
 ## 2. Hai repo
@@ -101,7 +101,7 @@ Trình duyệt ──► https://api.ketduyen.me ──► Nginx (EC2) ──►
 | IAM role của EC2 (inline policy S3 tên `thiepcuoi-media-s3`) | `thiepcuoi-api-ec2-role` |
 | Secret (SecureString) | `/thiepcuoi/prod/DB_PASSWORD`, `/thiepcuoi/prod/JWT_SECRET` |
 | Security group | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
-| Amplify Hosting (web) | `ketduyen-web` (đang dựng, mục 9) |
+| Amplify Hosting (web), nối GitHub, tự build khi push `main` | `ketduyen-web` (app ID `d3rx5bxsrz5mdw`, địa chỉ mặc định `main.d3rx5bxsrz5mdw.amplifyapp.com`) |
 
 Repo public nên không ghi account ID, endpoint RDS hay secret vào đây. Cần thì tra bằng CLI:
 
@@ -129,25 +129,30 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 - Script đặt trong scratchpad của phiên và mất khi scratchpad bị dọn: viết lại theo cách trên.
 - Xoá user thử ở production: chạy Python trong container, `docker compose -f docker-compose.prod.yml exec -T api python -`, rồi xoá `users` có email `e2e-%@example.com` (các bảng con xoá theo; file trên S3 thì không, nên xoá file qua API trước).
 - **Không bao giờ in secret** (mật khẩu DB, JWT) ra màn hình hay ghi vào git.
+- Phiên Claude Code có MCP server `aws-mcp` (`run_script` gọi boto3), đã dùng để cấu hình Amplify ngày 24/11. Phiên `aws login` hết hạn thì server này cũng báo lỗi kết nối.
 
 ## 7. Domain và DNS
 
 - `ketduyen.me` đăng ký ở Namecheap ngày 24/11/2026, hết hạn **24/11/2027**. Gia hạn `.me` mất phí, nhớ gia hạn trước hạn.
 - DNS dùng Namecheap BasicDNS (Domain List › Manage › Advanced DNS).
-- Lúc nhận domain, gói Student Pack đã tạo sẵn bản ghi cho GitHub Pages: 4 bản ghi A `@` → `185.199.108.153`…`185.199.111.153` và CNAME `www` → `ketduyen.me`. Các bản ghi này được giữ tới khi Amplify đưa bản ghi mới; khi đó xoá chúng, vì ALIAS `@` không đứng chung với A `@`.
-- Bản ghi theo kế hoạch:
+- Lúc nhận domain, gói Student Pack đã tạo sẵn bản ghi cho GitHub Pages (4 bản ghi A `@` → `185.199.108–111.153`, CNAME `www` → `ketduyen.me`). Đã xoá ngày 24/11 để thay bằng bản ghi của Amplify.
+- Bản ghi hiện có (24/11/2026, đã chạy):
 
 | Bản ghi | Trỏ tới | Dùng cho |
 | --- | --- | --- |
-| A `api` | `54.79.7.46` (Elastic IP) | API, chứng chỉ do certbot cấp trên EC2 |
-| ALIAS `@` | domain CloudFront do Amplify cấp | web |
-| CNAME `www` | domain CloudFront do Amplify cấp (Amplify chuyển `www` về domain gốc) | web |
-| CNAME `_…` | `_….acm-validations.aws.` | Amplify xác minh chứng chỉ |
+| A `api` | `54.79.7.46` (Elastic IP) | API; chứng chỉ Let's Encrypt `api.ketduyen.me` do certbot cấp trên EC2, hết hạn 22/02/2027, tự gia hạn |
+| ALIAS `@` | `d23j1n88dds9c2.cloudfront.net` (CloudFront của Amplify) | web; chứng chỉ Amazon `*.ketduyen.me`, Amplify tự gia hạn |
+| CNAME `www` | `d23j1n88dds9c2.cloudfront.net` | web; rule Amplify chuyển 301 về `https://ketduyen.me` |
+| CNAME `_47a1de59…` | `_0e9d2056….acm-validations.aws.` | Amplify xác minh và gia hạn chứng chỉ; **không xoá** |
+
+- Rule của Amplify và hai lỗi đã gặp: README › Lên production › Domain và HTTPS.
+  - Rule theo domain không được có `/<*>`.
+  - Rule SPA mặc định làm route trả 404.
 
 - Web và API cùng domain gốc, nên cookie `refresh_token` dùng `COOKIE_SAMESITE=lax` và Safari vẫn giữ được.
   - `CORS_ORIGINS=https://ketduyen.me`.
   - CORS của bucket cho `https://ketduyen.me` và `http://localhost:5173`, vì trình duyệt upload thẳng lên S3.
-- Tên cũ `thiepcuoi-api.duckdns.org` (DuckDNS miễn phí, dùng trước khi có domain) vẫn trỏ về EC2 và có chứng chỉ riêng. Bỏ khỏi Nginx khi web đã chuyển hẳn sang `api.ketduyen.me`.
+- Tên cũ `thiepcuoi-api.duckdns.org` (DuckDNS miễn phí, dùng trước khi có domain) vẫn trỏ về EC2, nằm trong `server_name` và dùng chung chứng chỉ `api.ketduyen.me`. Khi không còn ai dùng thì bỏ: cách làm ở README.
 - Chưa làm `media.ketduyen.me` cho CloudFront: chứng chỉ phải tạo ở us-east-1, mà gói Free không cho dùng tính năng nhiều region. URL ảnh được tính lúc trả về (`MEDIA_PUBLIC_BASE_URL`), nên đổi sau này không phải sửa dữ liệu.
 
 ## 8. Web (repo SuperProject) so với spec
@@ -163,7 +168,7 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 - **Web chưa có route trang thiệp public.** README ghi 3 đường dẫn: `/{slug}`, `/{slug}/nha-trai`, `/{slug}/nha-gai`.
 - **Web chạy local** gọi API qua proxy của Vite (`/api` → `https://api.ketduyen.me`). Cách làm ở `docs/backend.md` bên repo web.
 
-## 9. Diễn biến và việc đang làm
+## 9. Diễn biến và việc tiếp theo
 
 1. **05–06/11:** tách spec, làm Bước 0–11. Mọi bước được người dùng duyệt. Quyết định phụ của từng bước ghi trong `docs/progress.md` và `docs/modules/`.
 2. **09/11 → 23/11:** hướng hạ tầng đổi nhiều lần.
@@ -176,21 +181,15 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 5. **24/11:**
    - Chưa có domain: API dùng HTTPS qua DuckDNS, `COOKIE_SAMESITE=none` (Safari chặn cookie bên thứ ba).
    - Cùng ngày người dùng có domain `ketduyen.me` và chọn: web lên **Amplify** (không chung server với API), API ở `api.ketduyen.me`, cookie về `lax`.
-6. **Đang làm (kế hoạch đã duyệt 24/11), theo thứ tự:**
-   1. Người dùng thêm bản ghi A `api` ở Namecheap.
-   2. Người dùng tạo app Amplify nối GitHub. Phải bấm trên trình duyệt: monorepo, thư mục gốc `my-fe-app`, nhánh `main`, tên `ketduyen-web`.
-   3. Claude đặt cấu hình Amplify bằng CLI:
-      - Biến `VITE_API_URL=https://api.ketduyen.me` và `AMPLIFY_MONOREPO_APP_ROOT=my-fe-app`.
-      - Rule chuyển `www` về domain gốc, và rule SPA trả `/index.html`.
-      - Build nhánh `main`.
-      - Gắn domain `ketduyen.me` và `www`.
-   4. Người dùng thêm các bản ghi Amplify đưa: ALIAS `@`, CNAME `www`, CNAME xác minh chứng chỉ.
-   5. Claude làm trên EC2 và S3:
-      - Thêm `api.ketduyen.me` vào Nginx và chạy certbot.
-      - Trong `.env` đặt `CORS_ORIGINS=https://ketduyen.me`, `COOKIE_SAMESITE=lax`, rồi `compose up -d`.
-      - Sửa CORS của bucket.
-   6. Chạy thử luồng thật qua `https://api.ketduyen.me` với `Origin: https://ketduyen.me`, rồi xoá dữ liệu thử.
-   7. Cập nhật README › Lên production, `core.md`, `progress.md`, file này, và `docs/backend.md` bên web. Commit, không push.
+   - Đã làm xong cùng ngày:
+     - Nginx và certbot cho `api.ketduyen.me`.
+     - `.env`: `CORS_ORIGINS=https://ketduyen.me`, `COOKIE_SAMESITE=lax`. CORS của bucket đổi theo.
+     - Người dùng tạo app Amplify `ketduyen-web` nối GitHub. Claude đặt rule và gắn domain. Người dùng sửa DNS ở Namecheap.
+     - Chạy thử luồng thật qua `api.ketduyen.me` với `Origin: https://ketduyen.me`: 18/18 đúng. Dữ liệu thử đã xoá.
+6. **Việc tiếp theo hợp lý:**
+   - Bạn viết web nối API theo `docs/backend.md` bên repo web, rồi push `main` (Amplify tự deploy).
+   - Chốt key mẫu thiệp với người dùng (mục 8).
+   - Xem mục 11.
 
 ## 10. Tài khoản AWS
 
@@ -208,7 +207,7 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 
 | Việc | Ghi chú |
 | --- | --- |
-| Gắn domain `ketduyen.me` | Đang làm, mục 9 |
+| Bỏ tên DuckDNS cũ khỏi Nginx | Khi web và mọi người đã dùng `api.ketduyen.me`; README › Domain và HTTPS |
 | Key mẫu thiệp FE/BE lệch | Mục 8; cần người dùng chốt |
 | Next.js hay SPA cho trang thiệp public | Mục 8 |
 | Giới hạn tần suất đăng nhập, đăng ký | Spec 07 xếp ngoài v1; nên làm trước khi mở công khai, cần duyệt sửa spec |
