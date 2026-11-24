@@ -75,6 +75,7 @@ Dockerfile                   # image chạy API ở production (uvicorn, cổng 
 docker-compose.prod.yml      # production trên AWS EC2: container API (image từ ECR)
 docker/nginx-api.conf        # Nginx trên EC2, chuyển request tới API
 docker/ec2-user-data.sh      # chuẩn bị EC2 lần đầu: Docker, compose, Nginx, AWS CLI
+.gitlab-ci.yml               # pipeline GitLab: lint, test (Merge Request và nhánh main)
 ```
 
 Mỗi module gồm `models.py` (bảng), `schemas.py` (request/response), `service.py` (nghiệp vụ, là các hàm, không phụ thuộc HTTP) và `router.py` (endpoint mỏng, chỉ gọi service). `banks` không có bảng nên không có `models.py`.

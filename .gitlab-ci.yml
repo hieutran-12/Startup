@@ -1,0 +1,76 @@
+# Pipeline CI/CD của backend trên GitLab (README › Lên production).
+# Giai đoạn 1: kiểm tra code (lint, test) cho mọi Merge Request và cho nhánh main.
+
+# Thứ tự các stage. Job cùng stage chạy song song; stage sau chỉ chạy khi stage trước qua hết.
+stages:
+  - lint
+  - test
+
+# Khi nào tạo pipeline (áp dụng cho cả pipeline, trước khi xét từng job):
+workflow:
+  rules:
+    # 1. Có Merge Request: chạy pipeline gắn với MR (kết quả hiện ngay trong MR)
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    # 2. Push lên nhánh đang có MR mở: bỏ, vì đã có pipeline của MR ở trên (tránh chạy 2 lần)
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # 3. Push lên nhánh bất kỳ (gồm main): chạy pipeline của nhánh
+    - if: $CI_COMMIT_BRANCH
+
+# Giá trị mặc định cho mọi job
+default:
+  # Máy chạy tạo container từ image này rồi chạy lệnh trong đó: Python 3.13 + uv đúng bản
+  # Dockerfile đang dùng (0.13.7), để CI giống production
+  image: ghcr.io/astral-sh/uv:0.13.7-python3.13-trixie-slim
+  # Có commit mới đẩy lên cùng nhánh thì huỷ pipeline cũ đang chạy dở (tiết kiệm phút CI)
+  interruptible: true
+
+variables:
+  # uv để thư viện tải về trong thư mục project, để GitLab cache lại cho lần chạy sau
+  UV_CACHE_DIR: .uv-cache
+  # Image đã có Python 3.13: không cho uv tải Python khác
+  UV_PYTHON_DOWNLOADS: never
+
+# Job "mẫu" (tên bắt đầu bằng dấu chấm thì không tự chạy), các job khác dùng lại bằng `extends`
+.uv-project:
+  cache:
+    # Khoá cache theo uv.lock: thư viện đổi thì tạo cache mới, không đổi thì dùng lại
+    key:
+      files: [uv.lock]
+    paths: [.uv-cache]
+  before_script:
+    # --locked: uv.lock phải khớp pyproject.toml, lệch thì lỗi chứ không tự sửa
+    - uv sync --locked
+
+lint:
+  stage: lint
+  extends: .uv-project
+  script:
+    - uv run ruff check .
+    - uv run ruff format --check .
+
+test:
+  stage: test
+  extends: .uv-project
+  # Container chạy kèm job: PostgreSQL 16, gọi tới bằng tên máy "postgres"
+  services:
+    - name: postgres:16-alpine
+      alias: postgres
+  variables:
+    # Container postgres đọc 3 biến này để tạo user và database lúc khởi động
+    POSTGRES_USER: thiepcuoi
+    POSTGRES_PASSWORD: thiepcuoi
+    POSTGRES_DB: thiepcuoi_test
+    # pytest dựng schema trên database này (tests/conftest.py)
+    TEST_DATABASE_URL: postgresql+asyncpg://thiepcuoi:thiepcuoi@postgres:5432/thiepcuoi_test
+  script:
+    # Model khớp migration: chạy migration rồi so (giống `uv run alembic check` ở máy dev)
+    - DATABASE_URL=$TEST_DATABASE_URL uv run alembic upgrade head
+    - DATABASE_URL=$TEST_DATABASE_URL uv run alembic check
+    # --junitxml: ghi kết quả từng test ra file để GitLab hiện trong tab Tests và trong MR
+    - uv run pytest -q --junitxml=report.xml
+  artifacts:
+    # Lưu file kết quả kể cả khi test lỗi (lúc đó mới cần xem nhất)
+    when: always
+    reports:
+      junit: report.xml
