@@ -161,10 +161,11 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
   - Webhook revalidate (`FRONTEND_REVALIDATE_URL`) không dùng, đang để trống. `app/core/revalidate.py` bỏ qua khi biến trống.
   - Link thiệp chia sẻ lên Zalo hay Facebook chỉ hiện ảnh và tiêu đề chung của site, không có thẻ meta riêng từng thiệp.
   - Chưa quyết có chuyển sang Next.js hay không. Muốn đổi thì hỏi người dùng và sửa spec trước.
-- **Key mẫu thiệp lệch giữa hai bên:**
-  - Web có 4 mẫu, slug `royal-blue`, `dragon-phoenix-red`, `cherry-blossom-pink`, `minimalism-dark-red` (`my-fe-app/src/templates/registry.ts`).
-  - Backend seed `classic_01`, `minimal_01`, `floral_01`, `vintage_01` (`app/scripts/seed_templates.py`). Key phải là snake_case (spec 03).
-  - Cần chốt lại danh sách mẫu, rồi sửa seed và `manifest` (section, bảng màu, font, nền) cho khớp component web. Hỏi người dùng trước.
+- **Mẫu thiệp (đã khớp 24/11):**
+  - Backend seed đúng 4 mẫu của web. Key là slug của web đổi `-` thành `_`: `dragon_phoenix_red`, `royal_blue`, `cherry_blossom_pink`, `minimalism_dark_red`.
+  - Mỗi mẫu có 1 bảng màu, 1 font, 1 nền lấy từ code component. Chi tiết: `docs/modules/templates.md`.
+  - Thêm hoặc đổi mẫu thì sửa seed và component web cùng lúc.
+  - Seed không xoá mẫu cũ: mẫu đã bỏ phải xoá bằng SQL.
 - **Web chưa có route trang thiệp public.** README ghi 3 đường dẫn: `/{slug}`, `/{slug}/nha-trai`, `/{slug}/nha-gai`.
 - **Web chạy local** gọi API qua proxy của Vite (`/api` → `https://api.ketduyen.me`). Cách làm ở `docs/backend.md` bên repo web.
 
@@ -186,9 +187,10 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
      - `.env`: `CORS_ORIGINS=https://ketduyen.me`, `COOKIE_SAMESITE=lax`. CORS của bucket đổi theo.
      - Người dùng tạo app Amplify `ketduyen-web` nối GitHub. Claude đặt rule và gắn domain. Người dùng sửa DNS ở Namecheap.
      - Chạy thử luồng thật qua `api.ketduyen.me` với `Origin: https://ketduyen.me`: 18/18 đúng. Dữ liệu thử đã xoá.
+     - 4 mẫu seed đổi theo web (người dùng duyệt), 4 mẫu cũ đã xoá ở dev và production.
 6. **Việc tiếp theo hợp lý:**
    - Bạn viết web nối API theo `docs/backend.md` bên repo web, rồi push `main` (Amplify tự deploy).
-   - Chốt key mẫu thiệp với người dùng (mục 8).
+   - Trang thiệp public bên web, và quyết định SPA hay SSR (mục 8).
    - Xem mục 11.
 
 ## 10. Tài khoản AWS
@@ -208,7 +210,6 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 | Việc | Ghi chú |
 | --- | --- |
 | Bỏ tên DuckDNS cũ khỏi Nginx | Khi web và mọi người đã dùng `api.ketduyen.me`; README › Domain và HTTPS |
-| Key mẫu thiệp FE/BE lệch | Mục 8; cần người dùng chốt |
 | Next.js hay SPA cho trang thiệp public | Mục 8 |
 | Giới hạn tần suất đăng nhập, đăng ký | Spec 07 xếp ngoài v1; nên làm trước khi mở công khai, cần duyệt sửa spec |
 | Xác minh email, quên mật khẩu, đăng nhập Google/Zalo | Ngoài v1 (spec 07) |

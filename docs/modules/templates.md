@@ -1,7 +1,7 @@
 # templates
 
 ## Mục đích
-Danh mục mẫu thiệp (bảng `templates`), schema `TemplateManifest`, API đọc danh sách mẫu, script seed. Phần giao diện của mẫu nằm ở Next.js, tra theo `key`.
+Danh mục mẫu thiệp (bảng `templates`), schema `TemplateManifest`, API đọc danh sách mẫu, script seed. Phần giao diện của mẫu nằm ở web (repo SuperProject, `my-fe-app/src/templates/catalog/<slug>/`), tra theo `key`.
 
 ## File code chính
 - `app/modules/templates/models.py`: `Template`, `TemplateCategory` (Bước 2)
@@ -38,10 +38,12 @@ Danh mục mẫu thiệp (bảng `templates`), schema `TemplateManifest`, API đ
 - Dòng seed: `name` một dòng tối đa 120, `description` nhiều dòng tối đa 500, `position` ≥ 0; key trùng trong danh sách → `invalid_format` tại `key`
 - Seed không ghi `thumbnail_url`, `is_active`. Mọi cột còn lại luôn được ghi đè, nên bỏ một trường khỏi seed thì cột về mặc định
 
-## Dữ liệu seed
-- 4 mẫu `classic_01`, `minimal_01`, `floral_01`, `vintage_01` (premium). `minimal_01` không có `love_story`; ba mẫu kia có đủ 9 section
-- `default_sections` = mọi section của mẫu; `defaults` = phần tử đầu của mỗi danh sách (helper `_manifest`)
-- Key palette/font/nền là bản nháp do Claude đề xuất, chưa đối chiếu với component Next.js. Đổi key thì sửa seed và component cùng lúc
+## Dữ liệu seed (2026-11-24, người dùng duyệt: theo 4 mẫu của web)
+- Key = slug của web đổi `-` thành `_` (URL web kebab-case `/mau-thiep/royal-blue`, key snake_case `royal_blue`); position theo thứ tự trong `registry.ts`; tên và mô tả chép từ `meta` của mẫu
+- `dragon_phoenix_red` (classic, `max_gallery_images` 200 vì web ghi "Ảnh không giới hạn"), `royal_blue` (modern, 30), `cherry_blossom_pink` (floral, 30), `minimalism_dark_red` (minimal, 30). Cả 4 miễn phí
+- Mỗi mẫu khai đủ 9 section, `default_sections` = cả 9; đúng 1 bảng màu, 1 font, 1 nền lấy từ code component (`red_gold`/`georgia`/`plain`, `navy_gold`/`georgia`/`plain`, `rose_pink`/`georgia`/`plain`, `wine_cream`/`viaoda_libre`/`peony`). Web chưa cho chọn màu, font, nền; thêm lựa chọn thì sửa seed và component cùng lúc
+- `defaults` = phần tử đầu của mỗi danh sách (helper `_manifest`)
+- Seed chỉ upsert, không xoá mẫu đã bỏ khỏi danh sách: 4 mẫu cũ (`classic_01`, `minimal_01`, `floral_01`, `vintage_01`) đã xoá bằng `DELETE FROM templates WHERE key IN (...)` ở DB dev và production (chưa thiệp nào dùng; `invitations.template_id` là `RESTRICT`). Fixture test vẫn dùng key cũ, độc lập với seed
 
 ## Lưu ý
 - Lỗi tham chiếu chéo nằm trong `model_validator(mode="after")`, chỉ chạy khi mọi trường đã hợp lệ: lỗi cấu trúc hiện trước, sửa xong mới thấy lỗi tham chiếu

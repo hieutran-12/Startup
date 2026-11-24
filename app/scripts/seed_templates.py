@@ -4,7 +4,8 @@ uv run python -m app.scripts.seed_templates
 
 Toàn bộ danh sách được kiểm tra bằng `TemplateCreate` (gồm `TemplateManifest`) trước khi ghi:
 một mẫu sai thì không ghi mẫu nào, script in danh sách lỗi và thoát với mã 1.
-Key palette, font, nền là hợp đồng với component React: đổi ở đây thì đổi cả bên Next.js.
+Key mẫu, palette, font, nền là hợp đồng với component của web (repo SuperProject):
+đổi ở đây thì đổi cả bên web.
 """
 
 import asyncio
@@ -64,87 +65,80 @@ def _manifest(
     }
 
 
+# 4 mẫu theo web (repo SuperProject, my-fe-app/src/templates/): key là slug của web
+# đổi "-" thành "_", position theo thứ tự trong registry.ts.
+# Bảng màu, font, nền lấy đúng từ code của component.
 TEMPLATES: list[dict[str, Any]] = [
     {
-        "key": "classic_01",
-        "name": "Cổ điển",
-        "description": "Bố cục truyền thống, chữ serif, tông kem và vàng đồng.",
+        "key": "dragon_phoenix_red",
+        "name": "Dragon Phoenix Red",
+        "description": "Truyền thống với hoa văn rồng phượng, nền kem và viền vàng.",
         "category": "classic",
         "is_premium": False,
         "position": 0,
         "manifest": _manifest(
             sections=ALL_SECTIONS,
             palettes=[
-                _palette(
-                    "ivory_gold", "Ngà – vàng đồng", "#B08D57", "#E8DCC4", "#FBF7EF", "#3A2E22"
-                ),
-                _palette("walnut", "Nâu gỗ óc chó", "#8C6A43", "#D9C7A7", "#F7F1E6", "#2F241A"),
-                _palette("burgundy", "Đỏ rượu vang", "#A3485A", "#E9C9CF", "#FCF6F4", "#3B1F25"),
+                _palette("red_gold", "Đỏ – vàng kim", "#8B0000", "#D4AF37", "#FFF8E7", "#8B0000"),
             ],
-            fonts={
-                "playfair_display": "Playfair Display",
-                "cormorant_garamond": "Cormorant Garamond",
-            },
-            backgrounds={"plain": "Trơn", "paper": "Giấy dó"},
+            fonts={"georgia": "Georgia"},
+            backgrounds={"plain": "Trơn"},
+            max_gallery_images=200,  # web ghi "Ảnh không giới hạn": bằng giới hạn ảnh mỗi thiệp
+        ),
+    },
+    {
+        "key": "royal_blue",
+        "name": "Royal Blue",
+        "description": "Nền xanh navy sang trọng với khung vòm và chi tiết vàng.",
+        "category": "modern",
+        "is_premium": False,
+        "position": 1,
+        "manifest": _manifest(
+            sections=ALL_SECTIONS,
+            palettes=[
+                _palette(
+                    "navy_gold", "Xanh navy – vàng", "#E8C872", "#1B2A4A", "#0B1A33", "#F5F5F5"
+                ),
+            ],
+            fonts={"georgia": "Georgia"},
+            backgrounds={"plain": "Trơn"},
             max_gallery_images=30,
         ),
     },
     {
-        "key": "minimal_01",
-        "name": "Tối giản",
-        "description": "Nhiều khoảng trắng, một ảnh bìa lớn, phù hợp ảnh cưới đẹp.",
-        "category": "minimal",
-        "is_premium": False,
-        "position": 1,
-        "manifest": _manifest(
-            sections=[s for s in ALL_SECTIONS if s != SectionKey.LOVE_STORY],
-            palettes=[
-                _palette("charcoal", "Than chì", "#1F1F1F", "#BDBDBD", "#FFFFFF", "#1F1F1F"),
-                _palette("sage", "Xanh xô thơm", "#5B6C5D", "#C9D3C6", "#F6F7F4", "#222822"),
-                _palette("lavender", "Oải hương", "#7A6F9B", "#D6D1E6", "#F8F7FB", "#26223A"),
-            ],
-            fonts={"be_vietnam_pro": "Be Vietnam Pro", "montserrat": "Montserrat"},
-            backgrounds={"plain": "Trơn", "grain": "Nhiễu hạt"},
-            max_gallery_images=12,
-        ),
-    },
-    {
-        "key": "floral_01",
-        "name": "Hoa cỏ",
-        "description": "Hoạ tiết hoa vẽ tay, hợp đám cưới ngoài trời.",
+        "key": "cherry_blossom_pink",
+        "name": "Cherry Blossom Pink",
+        "description": "Lãng mạn với hoa anh đào hồng và bố cục bo tròn mềm mại.",
         "category": "floral",
         "is_premium": False,
         "position": 2,
         "manifest": _manifest(
             sections=ALL_SECTIONS,
             palettes=[
-                _palette("rose", "Hồng phấn", "#C7798A", "#F1D4DA", "#FFF8F8", "#3E2A2E"),
-                _palette("olive_leaf", "Xanh lá ô liu", "#6E8B5B", "#D5E0CC", "#F8FAF5", "#263021"),
-                _palette(
-                    "marigold", "Vàng cúc vạn thọ", "#D19A4F", "#F3DFC0", "#FFFBF3", "#3A2C17"
-                ),
+                _palette("rose_pink", "Hồng anh đào", "#880E4F", "#F48FB1", "#FDF0F4", "#880E4F"),
             ],
-            fonts={"lora": "Lora", "dancing_script": "Dancing Script"},
-            backgrounds={"plain": "Trơn", "watercolor_flowers": "Hoa màu nước"},
-            max_gallery_images=24,
+            fonts={"georgia": "Georgia"},
+            backgrounds={"plain": "Trơn"},
+            max_gallery_images=30,
         ),
     },
     {
-        "key": "vintage_01",
-        "name": "Hoài cổ",
-        "description": "Phong cách thư tay xưa, có hiệu ứng mở phong bì.",
-        "category": "vintage",
-        "is_premium": True,
+        "key": "minimalism_dark_red",
+        "name": "Minimalism Đỏ Đậm",
+        "description": (
+            "Tối giản sang trọng với nền kem, tông đỏ đô, hoa mẫu đơn và dấu triện mạ vàng."
+        ),
+        "category": "minimal",
+        "is_premium": False,
         "position": 3,
         "manifest": _manifest(
             sections=ALL_SECTIONS,
             palettes=[
-                _palette("sepia", "Nâu sepia", "#8B5E3C", "#D8C3A5", "#F4ECDD", "#3B2A1E"),
-                _palette("dusty_rose", "Hồng tro", "#A26769", "#E3CFCB", "#F7F0EC", "#3A2626"),
+                _palette("wine_cream", "Đỏ đô – kem", "#511419", "#C9A24A", "#FFF7EB", "#511419"),
             ],
-            fonts={"old_standard_tt": "Old Standard TT", "great_vibes": "Great Vibes"},
-            backgrounds={"old_paper": "Giấy cũ", "kraft": "Giấy kraft"},
-            max_gallery_images=40,
+            fonts={"viaoda_libre": "Viaoda Libre"},
+            backgrounds={"peony": "Hoa mẫu đơn"},
+            max_gallery_images=30,
         ),
     },
 ]

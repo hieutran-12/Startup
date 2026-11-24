@@ -19,7 +19,9 @@ from app.modules.templates.schemas import SectionKey, TemplateManifest
 from app.scripts.seed_templates import TEMPLATES, SeedError, seed, validate_templates
 from tests.conftest import make_manifest
 
-SEED_KEYS = {"classic_01", "minimal_01", "floral_01", "vintage_01"}
+# 4 mẫu theo web (repo SuperProject, my-fe-app/src/templates/registry.ts): key = slug của web,
+# đổi "-" thành "_" (URL của web là kebab-case, key là snake_case)
+SEED_KEYS = {"dragon_phoenix_red", "royal_blue", "cherry_blossom_pink", "minimalism_dark_red"}
 
 
 def _errors(data: Any) -> list[tuple[str, str]]:
@@ -198,7 +200,24 @@ def test_seed_list_is_valid() -> None:
     templates = validate_templates(TEMPLATES)
     assert {t.key for t in templates} == SEED_KEYS
     assert sorted(t.position for t in templates) == [0, 1, 2, 3]
-    assert [t.key for t in templates if t.is_premium] == ["vintage_01"]
+    assert [t.key for t in templates if t.is_premium] == []
+
+
+def test_seed_matches_web_templates() -> None:
+    """Thứ tự và nhóm theo web; mẫu nào cũng khai đủ 9 section, một bảng màu, một font, một nền
+    (đúng như component web đang vẽ; thêm lựa chọn thì sửa seed và component cùng lúc)."""
+    templates = sorted(validate_templates(TEMPLATES), key=lambda t: t.position)
+    assert [(t.key, t.category) for t in templates] == [
+        ("dragon_phoenix_red", "classic"),
+        ("royal_blue", "modern"),
+        ("cherry_blossom_pink", "floral"),
+        ("minimalism_dark_red", "minimal"),
+    ]
+    all_sections = [section.value for section in SectionKey]
+    for t in templates:
+        assert t.manifest.sections == all_sections
+        assert t.manifest.default_sections == all_sections
+        assert len(t.manifest.palettes) == len(t.manifest.fonts) == len(t.manifest.backgrounds) == 1
 
 
 def _seed_errors(rows: list[dict[str, Any]]) -> list[tuple[int, Any, str, str]]:
@@ -248,10 +267,10 @@ def test_seed_row_fields() -> None:
     rows[0]["is_premium"] = "false"
     rows[0]["sort_order"] = 1
     assert sorted(_seed_errors(rows)) == [
-        (0, "classic_01", "is_premium", "invalid_format"),
-        (0, "classic_01", "name", "required"),
-        (0, "classic_01", "position", "out_of_range"),
-        (0, "classic_01", "sort_order", "unknown_field"),
+        (0, "dragon_phoenix_red", "is_premium", "invalid_format"),
+        (0, "dragon_phoenix_red", "name", "required"),
+        (0, "dragon_phoenix_red", "position", "out_of_range"),
+        (0, "dragon_phoenix_red", "sort_order", "unknown_field"),
     ]
 
 
@@ -299,7 +318,7 @@ async def test_reseed_overwrites_changed_rows(session_maker: async_sessionmaker)
     async with session_maker() as db:
         await seed(db, rows)
 
-    stored = (await _all_templates(session_maker))["classic_01"]
+    stored = (await _all_templates(session_maker))["dragon_phoenix_red"]
     assert stored.description is None
     assert stored.manifest["max_gallery_images"] == 5
     assert stored.is_premium is True
@@ -351,10 +370,11 @@ async def test_get_templates_returns_manifest(
         }
         assert item["manifest"] == expected[item["key"]].manifest.model_dump(mode="json")
 
-    one = await client.get("/templates/floral_01")
+    one = await client.get("/templates/royal_blue")
     assert one.status_code == 200
-    assert one.json()["manifest"] == expected["floral_01"].manifest.model_dump(mode="json")
-    assert (await client.get("/templates/floral-01")).status_code == 404
+    assert one.json()["manifest"] == expected["royal_blue"].manifest.model_dump(mode="json")
+    # slug kebab-case của web không phải key
+    assert (await client.get("/templates/royal-blue")).status_code == 404
 
 
 async def test_manifest_schema_in_openapi(client: AsyncClient) -> None:
