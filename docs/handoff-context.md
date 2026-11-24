@@ -122,14 +122,6 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 - Nginx cài trên máy: `/etc/nginx/conf.d/thiepcuoi-api.conf`, theo mẫu `docker/nginx-api.conf`. Chứng chỉ Let's Encrypt do certbot cấp, `certbot.timer` tự gia hạn.
 - Sửa `.env` xong thì chạy lại: `docker compose -f docker-compose.prod.yml up -d`.
 
-### Phát hành API: tự động bằng GitHub Actions
-
-- Push lên `main` có đổi code thì `.github/workflows/deploy.yml` chạy test, build image, deploy lên EC2 qua SSM. Xem ở tab Actions của repo. Chi tiết: README › Phát hành phiên bản mới.
-- GitHub đăng nhập AWS bằng OIDC, role `thiepcuoi-github-deploy`.
-  - ARN của role nằm ở biến repo `AWS_ROLE_ARN`.
-  - Repo thuộc tài khoản cá nhân `hieutran-12`, chỉ chủ repo vào được Settings. Tài khoản người dùng hay đăng nhập GitHub chỉ là người cộng tác, không vào được Settings.
-- Khi Actions không dùng được thì phát hành bằng tay (README), hoặc qua SSM như dưới đây.
-
 ### Claude điều khiển EC2 bằng SSM, không có SSH
 
 - Gửi lệnh bằng `aws ssm send-command --document-name AWS-RunShellScript`. Document này chạy bằng `sh`, nên `set -o pipefail` báo lỗi.
@@ -196,7 +188,6 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
      - Người dùng tạo app Amplify `ketduyen-web` nối GitHub. Claude đặt rule và gắn domain. Người dùng sửa DNS ở Namecheap.
      - Chạy thử luồng thật qua `api.ketduyen.me` với `Origin: https://ketduyen.me`: 18/18 đúng. Dữ liệu thử đã xoá.
      - 4 mẫu seed đổi theo web (người dùng duyệt), 4 mẫu cũ đã xoá ở dev và production.
-     - Deploy API tự động bằng GitHub Actions + OIDC (người dùng duyệt).
 6. **Việc tiếp theo hợp lý:**
    - Bạn viết web nối API theo `docs/backend.md` bên repo web, rồi push `main` (Amplify tự deploy).
    - Trang thiệp public bên web, và quyết định SPA hay SSR (mục 8).
@@ -229,9 +220,9 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 | README › Chạy lần đầu còn ghi chú Windows/WSL | Máy dev giờ là Mac; sửa khi đụng tới README |
 | Gia hạn domain | Trước 24/11/2027 |
 
-**Lộ trình nâng cấp khi có người dùng thật.** Hiện tại: 1 EC2, deploy API tự động bằng GitHub Actions (xong 24/11), chỉ có production, hạ tầng dựng bằng CLI. Thứ tự nâng cấp:
+**Lộ trình nâng cấp khi có người dùng thật.** Hiện tại: 1 EC2, deploy API bằng tay, chỉ có production, hạ tầng dựng bằng CLI. Thứ tự nâng cấp:
 
-1. ~~CI/CD cho API~~: xong 24/11.
+1. CI/CD cho API: GitHub Actions chạy test, build image arm64, đẩy ECR, deploy qua SSM.
 2. Theo dõi lỗi và cảnh báo: CloudWatch, báo khi `/health` lỗi.
 3. Môi trường staging.
 4. Nhiều máy sau Load Balancer (ECS), RDS Multi-AZ, backup giữ lâu hơn (cần nâng gói).
