@@ -77,6 +77,7 @@ Module trong `docs/modules/<tên>.md` (danh sách và vị trí code: `docs/modu
 | Ngân hàng, mừng cưới (gifts) | 03 › Nội dung thiệp; 05 (GET /banks) | banks |
 | Âm lịch | 04 › Ngày âm lịch; 07 › Nguồn | lunar |
 | Trang public, `?side=` | 05 › Response của trang public; 04 › Link theo bên | invitations |
+| Deploy, AWS, domain, bàn giao phiên | README › Lên production; `docs/handoff-context.md` | core |
 | Việc có vẻ nằm ngoài v1 | 07 (không làm, hỏi trước) | |
 
 ## Quy trình mọi tác vụ
