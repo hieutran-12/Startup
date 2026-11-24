@@ -75,6 +75,7 @@ Dockerfile                   # image chạy API ở production (uvicorn, cổng 
 docker-compose.prod.yml      # production trên AWS EC2: container API (image từ ECR)
 docker/nginx-api.conf        # Nginx trên EC2, chuyển request tới API
 docker/ec2-user-data.sh      # chuẩn bị EC2 lần đầu: Docker, compose, Nginx, AWS CLI
+.github/workflows/deploy.yml # CI (ruff, alembic check, pytest) và deploy API lên EC2 khi push main
 ```
 
 Mỗi module gồm `models.py` (bảng), `schemas.py` (request/response), `service.py` (nghiệp vụ, là các hàm, không phụ thuộc HTTP) và `router.py` (endpoint mỏng, chỉ gọi service). `banks` không có bảng nên không có `models.py`.
@@ -252,6 +253,7 @@ Trình duyệt ──HTTPS──> https://api.ketduyen.me: Nginx (trên EC2) ─
 | Tường lửa | API mở 80, 443 (SSH chỉ một IP); database chỉ nhận cổng 5432 từ group của API | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
 | Web | Amplify Hosting nối repo GitHub `HuongNguyenQuoc/SuperProject`, nhánh `main`, thư mục `my-fe-app`. Push là tự build (`yarn run build`, thư mục `dist`) và deploy. Biến `VITE_API_URL=https://api.ketduyen.me`; chứng chỉ do Amplify cấp | `ketduyen-web` |
 | Domain | Namecheap, DNS BasicDNS, hết hạn 2027-11-24 | `ketduyen.me` |
+| Deploy tự động | GitHub Actions đăng nhập AWS bằng OIDC (IAM identity provider `token.actions.githubusercontent.com`), không có khoá AWS trên GitHub | role `thiepcuoi-github-deploy` |
 
 **Trên EC2**
 
@@ -262,7 +264,23 @@ Trình duyệt ──HTTPS──> https://api.ketduyen.me: Nginx (trên EC2) ─
 
 **Phát hành phiên bản mới**
 
-Trên máy dev (Mac arm64, cùng kiến trúc với EC2; máy x86 thì build bằng `docker buildx build --platform linux/arm64`):
+Tự động bằng GitHub Actions (`.github/workflows/deploy.yml`), xem kết quả ở tab Actions của repo:
+
+- **Mỗi pull request và mỗi lần push:** chạy `ruff check`, `ruff format --check`, `alembic check`, `pytest` với PostgreSQL 16.
+- **Khi nào deploy:** push lên `main` có đổi code (không chỉ `docs/`, `*.md`), hoặc bấm *Run workflow* ở tab Actions.
+- **Các bước deploy:**
+  1. Build image arm64 trên máy chạy `ubuntu-24.04-arm` của GitHub.
+  2. Đẩy image lên ECR, tag là 7 ký tự đầu của commit. Tag đã có thì dùng lại.
+  3. Gửi lệnh SSM cho EC2: đổi `API_IMAGE` trong `.env`, chạy `alembic upgrade head` rồi `up -d`, đợi `/health`, chạy seed.
+  4. Gọi thử `https://api.ketduyen.me/health`.
+- **API mới không khỏe** thì EC2 tự quay lại image cũ. Migration đã chạy thì không lùi, nên migration phải tương thích ngược.
+- **Đăng nhập AWS bằng OIDC**, không có khoá AWS trên GitHub.
+  - Role `thiepcuoi-github-deploy` chỉ nhận repo `hieutran-12/Startup`, nhánh `main`.
+  - Quyền của role: đẩy image vào ECR `thiepcuoi-api`; gửi lệnh `AWS-RunShellScript` tới máy có tag `Name=thiepcuoi-api` và đọc kết quả; tra instance.
+  - ARN của role nằm ở biến repo `AWS_ROLE_ARN` (Settings › Secrets and variables › Actions › Variables). Chỉ chủ repo sửa được biến này.
+  - Log của repo public ai cũng xem được, nên workflow che số tài khoản AWS trong log.
+
+Làm tay, khi GitHub Actions không dùng được. Trên máy dev (Mac arm64, cùng kiến trúc với EC2; máy x86 thì build bằng `docker buildx build --platform linux/arm64`):
 
 ```bash
 TAG=$(git rev-parse --short HEAD)
@@ -280,7 +298,10 @@ sudo sed -i "s|^API_IMAGE=.*|API_IMAGE=<REGISTRY>/thiepcuoi-api:<TAG>|" .env
 sudo docker compose -f docker-compose.prod.yml pull
 sudo docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
 sudo docker compose -f docker-compose.prod.yml up -d
+sudo docker compose -f docker-compose.prod.yml exec -T api python -m app.scripts.seed_templates
 ```
+
+Seed chỉ thêm và cập nhật mẫu theo `key`, không xoá mẫu đã bỏ khỏi danh sách: mẫu đã bỏ phải xoá bằng SQL (`docs/modules/templates.md`).
 
 Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
 
