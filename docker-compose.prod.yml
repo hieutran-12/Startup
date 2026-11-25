@@ -1,9 +1,16 @@
-# Production trên AWS EC2. Hướng dẫn: README › Lên production.
-#   Internet → Nginx (trên EC2, docker/nginx-api.conf) → API (container này, 127.0.0.1:8000)
-#   Database: RDS PostgreSQL. File: S3 private, đọc qua CloudFront.
-# Trên EC2, trong thư mục chứa file này và .env:
-#   docker compose -f docker-compose.prod.yml pull
-#   docker compose -f docker-compose.prod.yml up -d
+# Production và staging của API trên AWS EC2. Hướng dẫn: README › Lên production.
+#   api.ketduyen.me         → Nginx → upstream thiepcuoi_production → api-blue (127.0.0.1:8000)
+#                                                                   hoặc api-green (127.0.0.1:8002)
+#   api-staging.ketduyen.me → Nginx → api-staging (127.0.0.1:8001)
+#   Database: RDS PostgreSQL (database riêng cho mỗi môi trường). File: S3 private, đọc qua CloudFront.
+# Blue-green: deploy/deploy.sh chạy màu đang nghỉ bằng image mới, kiểm tra, rồi đổi upstream của
+# Nginx (không gián đoạn). Không gọi `docker compose up -d` cho cả file: luôn đi qua deploy.sh.
+#
+# File trong /opt/thiepcuoi (không có trong git, quyền 600):
+#   .env            biến cho compose: API_REPOSITORY, API_IMAGE_BLUE, API_IMAGE_GREEN,
+#                   API_IMAGE_STAGING (deploy.sh ghi tag vào đây)
+#   production.env  cấu hình app production; staging.env: cấu hình app staging
+#                   (mẫu: .env.production.example)
 
 # Giới hạn log của mỗi container (mặc định Docker ghi không giới hạn, lâu ngày đầy ổ đĩa)
 x-logging: &logging
@@ -12,34 +19,61 @@ x-logging: &logging
     max-size: "10m"
     max-file: "5"
 
+# Khuôn chung cho 3 service API (YAML anchor, mỗi service gộp vào bằng `<<: *api`)
+x-api: &api
+  restart: unless-stopped
+  logging: *logging
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+
+# Giá trị ở đây thắng giá trị trong file env_file, nên không đặt các key này trong *.env
+x-api-environment: &api-environment
+  COOKIE_SECURE: "true"
+  # AWS S3: không endpoint, không key → boto3 dùng IAM role của EC2.
+  # "Hop limit" metadata của EC2 phải là 2, nếu không container không lấy được role.
+  S3_ENDPOINT_URL: ""
+  S3_ACCESS_KEY_ID: ""
+  S3_SECRET_ACCESS_KEY: ""
+  S3_REGION: ap-southeast-2
+
 services:
-  api:
-    # Image on ECR, tag  = commit hash (Put in .env)
-    image: ${API_IMAGE:?Thieu API_IMAGE trong .env}
-    restart: unless-stopped
-    logging: *logging
-    # Only Nginx on the same EC2 can reach the API. Port 8000 is not open to the Internet.
+  api-blue:
+    <<: *api
+    image: ${API_IMAGE_BLUE:?Thieu API_IMAGE_BLUE trong .env}
+    # Chỉ Nginx trên cùng EC2 gọi được; cổng không mở ra Internet
     ports:
       - "127.0.0.1:8000:8000"
-    env_file: .env
-    # Values here win over .env, so do not put these keys in .env
+    env_file:
+      - path: production.env
+        required: false # deploy.sh tự kiểm tra trước khi chạy
     environment:
+      <<: *api-environment
       APP_ENV: production
-      COOKIE_SECURE: "true"
-      # Stop early if .env misses one (the app defaults point to localhost)
-      DATABASE_URL: ${DATABASE_URL:?Thieu DATABASE_URL trong .env}
-      CORS_ORIGINS: ${CORS_ORIGINS:?Thieu CORS_ORIGINS trong .env}
-      S3_BUCKET: ${S3_BUCKET:?Thieu S3_BUCKET trong .env}
-      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?Thieu MEDIA_PUBLIC_BASE_URL trong .env}
-      # AWS S3: no endpoint and no keys -> boto3 uses the IAM role of the EC2 instance.
-      # The EC2 metadata "hop limit" must be 2, or the container cannot get the role.
-      S3_ENDPOINT_URL: ""
-      S3_ACCESS_KEY_ID: ""
-      S3_SECRET_ACCESS_KEY: ""
-      S3_REGION: ap-southeast-2
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 20s
+
+  api-green:
+    <<: *api
+    image: ${API_IMAGE_GREEN:?Thieu API_IMAGE_GREEN trong .env}
+    ports:
+      - "127.0.0.1:8002:8000"
+    env_file:
+      - path: production.env
+        required: false
+    environment:
+      <<: *api-environment
+      APP_ENV: production
+
+  api-staging:
+    <<: *api
+    image: ${API_IMAGE_STAGING:?Thieu API_IMAGE_STAGING trong .env}
+    ports:
+      - "127.0.0.1:8001:8000"
+    env_file:
+      - path: staging.env
+        required: false
+    environment:
+      <<: *api-environment
+      APP_ENV: staging
