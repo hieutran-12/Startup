@@ -15,7 +15,7 @@ Trạng thái ngày **24/11/2026**. Dành cho AI hoặc người mới mở repo
 
 | | Backend | Web |
 | --- | --- | --- |
-| GitHub | `hieutran-12/Startup` | `HuongNguyenQuoc/SuperProject` |
+| Repo gốc | GitLab `ketduyen/thiepcuoi-api` (private, từ 25/11); GitHub `hieutran-12/Startup` là bản sao | GitHub `HuongNguyenQuoc/SuperProject` |
 | Trên máy người dùng | `~/Documents/myProject/Startup` | `~/Documents/myProject/SuperProject` (code ở `my-fe-app/`) |
 | Stack | Python 3.13, FastAPI (mục 3) | Vite 5, React 18, TypeScript, Mantine 7, react-router 6, yarn v1 |
 | Tài liệu cho AI | `CLAUDE.md`, file này | `CLAUDE.md`, `docs/backend.md` |
@@ -99,7 +99,9 @@ Trình duyệt ──► https://api.ketduyen.me ──► Nginx (EC2) ──►
 | S3 file người dùng, sau CloudFront | `thiepcuoi-media-prod` |
 | ECR, tag là commit hash | `thiepcuoi-api` |
 | IAM role của EC2 (inline policy S3 tên `thiepcuoi-media-s3`) | `thiepcuoi-api-ec2-role` |
-| Secret (SecureString) | `/thiepcuoi/prod/DB_PASSWORD`, `/thiepcuoi/prod/JWT_SECRET` |
+| Secret (SecureString) | `/thiepcuoi/prod/*`, `/thiepcuoi/staging/*` (`DB_PASSWORD`, `JWT_SECRET`) |
+| Staging: database `thiepcuoi_staging` (user riêng, không vào được database production), S3 `thiepcuoi-media-staging`, CloudFront `E362C5RDYEDSIH` | `api-staging.ketduyen.me` |
+| IAM role cho GitLab CI (OIDC, chỉ nhận `project_path:ketduyen/thiepcuoi-api:ref_type:branch:ref:main`) | `thiepcuoi-gitlab-ci` |
 | Security group | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
 | Amplify Hosting (web), nối GitHub, tự build khi push `main` | `ketduyen-web` (app ID `d3rx5bxsrz5mdw`, địa chỉ mặc định `main.d3rx5bxsrz5mdw.amplifyapp.com`) |
 
@@ -113,14 +115,18 @@ aws cloudfront list-distributions --query 'DistributionList.Items[].[Id,DomainNa
 aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 ```
 
-### Trên EC2
+### Trên EC2 (từ 25/11: staging + production blue-green)
 
-- `/opt/thiepcuoi/` có `docker-compose.prod.yml` và `.env`.
-  - `.env` có quyền 600, theo mẫu `.env.production.example`.
-  - `DATABASE_URL` và `JWT_SECRET` lấy từ Parameter Store khi dựng.
-  - `API_IMAGE` là tag ECR đang chạy.
-- Nginx cài trên máy: `/etc/nginx/conf.d/thiepcuoi-api.conf`, theo mẫu `docker/nginx-api.conf`. Chứng chỉ Let's Encrypt do certbot cấp, `certbot.timer` tự gia hạn.
-- Sửa `.env` xong thì chạy lại: `docker compose -f docker-compose.prod.yml up -d`.
+- `/opt/thiepcuoi/` (quyền 600): `docker-compose.prod.yml` (`api-blue` :8000, `api-green` :8002, `api-staging` :8001); `.env` (biến compose: `API_REPOSITORY`, `API_IMAGE_*`); `production.env`, `staging.env` (cấu hình app); `deploy.sh` (bản chạy tay); `backup-20261125-041503/` (cấu hình trước khi chuyển blue-green).
+- Nginx: `thiepcuoi-api.conf` (production, `proxy_pass http://thiepcuoi_production`), `thiepcuoi-upstream.conf` (chỉ `deploy.sh` ghi, trỏ màu đang phục vụ), `thiepcuoi-api-staging.conf`. Chứng chỉ Let's Encrypt riêng cho `api.ketduyen.me` và `api-staging.ketduyen.me`, `certbot.timer` tự gia hạn.
+- Lệnh: `sudo bash /opt/thiepcuoi/deploy.sh status | rollback | staging <tag> | production <tag>`. Từ máy dev: `bash deploy/ssm-run.sh <cùng tham số>` (qua SSM).
+- Đã thử 25/11: chuyển sang blue-green, deploy, rollback, deploy lại đều không rớt request nào (56/56 lần gọi production trả 200); tag không tồn tại thì dừng ở bước tải image, production không đổi.
+
+### CI/CD: GitLab (README › CI/CD: phát hành phiên bản mới)
+
+- Pipeline `.gitlab-ci.yml`: MR → lint, test; `main` → lint, test, build (runner `saas-linux-small-arm64`, Docker-in-Docker, ECR) → deploy-staging → smoke-staging → deploy-production (bấm tay, blue-green).
+- GitLab đăng nhập AWS bằng OIDC: JWT `id_tokens` (`aud: sts.amazonaws.com`) → `assume-role-with-web-identity` role `thiepcuoi-gitlab-ci`; ARN ở biến CI/CD `AWS_ROLE_ARN`.
+- Người dùng tạo group `ketduyen` và project, push bằng Personal Access Token (Keychain của Mac). Hướng GitHub Actions (role `thiepcuoi-github-deploy`) đã bỏ và xoá trên AWS.
 
 ### Claude điều khiển EC2 bằng SSM, không có SSH
 
@@ -188,7 +194,8 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
      - Người dùng tạo app Amplify `ketduyen-web` nối GitHub. Claude đặt rule và gắn domain. Người dùng sửa DNS ở Namecheap.
      - Chạy thử luồng thật qua `api.ketduyen.me` với `Origin: https://ketduyen.me`: 18/18 đúng. Dữ liệu thử đã xoá.
      - 4 mẫu seed đổi theo web (người dùng duyệt), 4 mẫu cũ đã xoá ở dev và production.
-6. **Việc tiếp theo hợp lý:**
+6. **25/11:** người dùng chọn CI/CD trên GitLab theo kiểu dự án thật nhưng không Kubernetes (hướng A; đã cân nhắc và bỏ k3s/EKS + Argo CD): repo gốc chuyển sang GitLab, thêm môi trường staging, smoke test, cổng duyệt, production blue-green tự quay lại khi lỗi. Người dùng muốn mỗi bước được trình bày kiến trúc và luồng trước khi code.
+7. **Việc tiếp theo hợp lý:**
    - Bạn viết web nối API theo `docs/backend.md` bên repo web, rồi push `main` (Amplify tự deploy).
    - Trang thiệp public bên web, và quyết định SPA hay SSR (mục 8).
    - Xem mục 11.
@@ -220,11 +227,11 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 | README › Chạy lần đầu còn ghi chú Windows/WSL | Máy dev giờ là Mac; sửa khi đụng tới README |
 | Gia hạn domain | Trước 24/11/2027 |
 
-**Lộ trình nâng cấp khi có người dùng thật.** Hiện tại: 1 EC2, deploy API bằng tay, chỉ có production, hạ tầng dựng bằng CLI. Thứ tự nâng cấp:
+**Lộ trình nâng cấp khi có người dùng thật.** Hiện tại: 1 EC2 chạy cả staging và production blue-green, CI/CD GitLab (xong 25/11), hạ tầng dựng bằng CLI. Thứ tự nâng cấp:
 
-1. CI/CD cho API: GitHub Actions chạy test, build image arm64, đẩy ECR, deploy qua SSM.
+1. ~~CI/CD cho API~~ và ~~môi trường staging~~: xong 25/11 (GitLab CI, OIDC, blue-green).
 2. Theo dõi lỗi và cảnh báo: CloudWatch, báo khi `/health` lỗi.
-3. Môi trường staging.
+3. Tách staging ra máy riêng (hiện chung EC2 và chung instance RDS với production).
 4. Nhiều máy sau Load Balancer (ECS), RDS Multi-AZ, backup giữ lâu hơn (cần nâng gói).
 5. Hạ tầng viết thành code (CDK hoặc Terraform).
 

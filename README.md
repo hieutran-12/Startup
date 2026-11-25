@@ -72,9 +72,14 @@ alembic/versions/            # migration 0001: toàn bộ schema
 docs/                        # spec, tài liệu module, tiến độ
 tests/                       # pytest chạy với PostgreSQL thật, storage giả lập
 Dockerfile                   # image chạy API ở production (uvicorn, cổng 8000)
-docker-compose.prod.yml      # production trên AWS EC2: container API (image từ ECR)
-docker/nginx-api.conf        # Nginx trên EC2, chuyển request tới API
+docker-compose.prod.yml      # trên EC2: api-blue, api-green (production), api-staging
+docker/nginx-api.conf        # Nginx trên EC2: api.ketduyen.me → upstream blue/green
+docker/nginx-api-staging.conf # Nginx trên EC2: api-staging.ketduyen.me → api-staging
 docker/ec2-user-data.sh      # chuẩn bị EC2 lần đầu: Docker, compose, Nginx, AWS CLI
+.gitlab-ci.yml               # pipeline GitLab: lint, test, build, deploy staging, smoke test, production
+deploy/deploy.sh             # chạy trên EC2: deploy staging, blue-green production, rollback, status
+deploy/ssm-run.sh            # chạy ở CI hoặc máy dev: gửi deploy.sh tới EC2 qua SSM
+scripts/smoke_test.py        # luồng thật vào một môi trường đã deploy (job smoke-staging)
 ```
 
 Mỗi module gồm `models.py` (bảng), `schemas.py` (request/response), `service.py` (nghiệp vụ, là các hàm, không phụ thuộc HTTP) và `router.py` (endpoint mỏng, chỉ gọi service). `banks` không có bảng nên không có `models.py`.
@@ -229,60 +234,86 @@ Sự kiện và các ảnh, nhạc cố định không nằm trong `content`. Tr
 
 ## Lên production
 
-Production chạy trên AWS, region `ap-southeast-2` (Sydney). API dựng ngày 2026-11-23; domain `ketduyen.me` và web gắn ngày 2026-11-24.
+Chạy trên AWS, region `ap-southeast-2` (Sydney). API dựng ngày 2026-11-23; domain `ketduyen.me` và web gắn ngày 2026-11-24; CI/CD GitLab, staging và blue-green từ 2026-11-25.
 
 ```text
 GitHub SuperProject (main) ──push──> Amplify build my-fe-app ──> https://ketduyen.me (web, SPA)
-Trình duyệt ──HTTPS──> https://api.ketduyen.me: Nginx (trên EC2) ──> container API :8000 ──> RDS PostgreSQL
-    │                                     │ IAM role của EC2: ký link upload, kiểm tra, xoá file
-    ├── PUT bằng link presigned ──> S3 (private) <──┘
-    └── GET ảnh, nhạc ──> CloudFront ── OAC ──> S3
+
+GitLab ketduyen/thiepcuoi-api: MR → lint, test │ main → lint, test, build ──> ECR (image :<commit>)
+        │ OIDC → role thiepcuoi-gitlab-ci → SSM ──> EC2: deploy/deploy.sh
+        ▼
+Trình duyệt ──HTTPS──> Nginx (trên EC2)
+  api-staging.ketduyen.me ──> api-staging :8001 ──> RDS: database thiepcuoi_staging
+  api.ketduyen.me ──> upstream thiepcuoi_production ──> api-blue :8000 hoặc api-green :8002 ──> RDS: database thiepcuoi
+  PUT bằng link presigned ──> S3 (private) · GET ảnh, nhạc ──> CloudFront ── OAC ──> S3   (mỗi môi trường một bộ)
 ```
 
 | Thành phần | Dịch vụ AWS | Tên |
 | --- | --- | --- |
-| Máy chạy API | EC2 `t4g.small` (Ubuntu 24.04 arm64), Elastic IP, CPU credit `standard`, IMDSv2 với hop limit 2 | `thiepcuoi-api` |
-| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`), body API tối đa 1 MB, HTTPS bằng Let's Encrypt | `api.ketduyen.me` |
+| Máy chạy API | EC2 `t4g.small` (Ubuntu 24.04 arm64), Elastic IP, CPU credit `standard`, IMDSv2 với hop limit 2. Chạy cả production (blue, green) và staging | `thiepcuoi-api` |
+| Reverse proxy | Nginx cài trên EC2 (`docker/nginx-api.conf`, `docker/nginx-api-staging.conf`), body API tối đa 1 MB, HTTPS bằng Let's Encrypt | `api.ketduyen.me`, `api-staging.ketduyen.me` |
 | Image API | ECR, tag là commit hash, không ghi đè tag, giữ 10 image mới nhất | `thiepcuoi-api` |
-| Database | RDS PostgreSQL 16 `db.t4g.micro`, không mở ra Internet, mã hoá, chống xoá nhầm, backup tự động giữ 1 ngày | `thiepcuoi-db` |
-| File | S3 chặn truy cập công khai, SSE-S3, không bật versioning, CORS cho `https://ketduyen.me` và `http://localhost:5173` | `thiepcuoi-media-prod` |
-| Đọc file công khai | CloudFront với Origin Access Control; bucket policy chỉ cho distribution này `s3:GetObject` | |
-| Quyền của API | IAM role của EC2: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` trên file, `s3:ListBucket` trên bucket (để file chưa upload trả 404, không phải 403), kéo image ECR, SSM | `thiepcuoi-api-ec2-role` |
-| Secret | SSM Parameter Store, SecureString | `/thiepcuoi/prod/DB_PASSWORD`, `/thiepcuoi/prod/JWT_SECRET` |
+| Database | RDS PostgreSQL 16 `db.t4g.micro`, không mở ra Internet, mã hoá, chống xoá nhầm, backup tự động giữ 1 ngày. Hai database trên cùng instance; user `thiepcuoi_staging` chỉ vào được database staging | `thiepcuoi-db`: `thiepcuoi`, `thiepcuoi_staging` |
+| File | S3 chặn truy cập công khai, SSE-S3, không bật versioning. CORS production: `https://ketduyen.me`, `http://localhost:5173`; staging: `http://localhost:5173` | `thiepcuoi-media-prod`, `thiepcuoi-media-staging` |
+| Đọc file công khai | CloudFront với Origin Access Control (dùng chung một OAC); bucket policy chỉ cho đúng distribution của nó `s3:GetObject` | production `EHUOPL64LWYXE`, staging `E362C5RDYEDSIH` |
+| Quyền của API | IAM role của EC2: `s3:PutObject`, `s3:GetObject`, `s3:DeleteObject` trên file, `s3:ListBucket` trên bucket (để file chưa upload trả 404, không phải 403) của cả 2 bucket; kéo image ECR; SSM | `thiepcuoi-api-ec2-role` |
+| Secret | SSM Parameter Store, SecureString | `/thiepcuoi/prod/*`, `/thiepcuoi/staging/*` (`DB_PASSWORD`, `JWT_SECRET`) |
 | Tường lửa | API mở 80, 443 (SSH chỉ một IP); database chỉ nhận cổng 5432 từ group của API | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
+| CI/CD | GitLab.com, project private `ketduyen/thiepcuoi-api` (gói Free, 400 phút CI/tháng). Đăng nhập AWS bằng OIDC (IAM identity provider `gitlab.com`), không có khoá AWS ở GitLab | role `thiepcuoi-gitlab-ci` |
 | Web | Amplify Hosting nối repo GitHub `HuongNguyenQuoc/SuperProject`, nhánh `main`, thư mục `my-fe-app`. Push là tự build (`yarn run build`, thư mục `dist`) và deploy. Biến `VITE_API_URL=https://api.ketduyen.me`; chứng chỉ do Amplify cấp | `ketduyen-web` |
 | Domain | Namecheap, DNS BasicDNS, hết hạn 2027-11-24 | `ketduyen.me` |
 
 **Trên EC2**
 
 - Máy được chuẩn bị bằng `docker/ec2-user-data.sh` (user data lúc tạo EC2): Docker, compose, Nginx, AWS CLI, ECR credential helper (`docker pull` từ ECR bằng IAM role, không cần `docker login`), 1 GB swap.
-- Thư mục `/opt/thiepcuoi` có `docker-compose.prod.yml` và `.env` (quyền 600, theo mẫu `.env.production.example`, secret lấy từ Parameter Store).
-- Compose tự đặt `APP_ENV=production`, `COOKIE_SECURE=true`, `S3_REGION=ap-southeast-2` và để trống endpoint, key S3 (boto3 lấy quyền từ IAM role). Thiếu biến bắt buộc thì compose báo lỗi; `JWT_SECRET` yếu thì API không khởi động.
+- Thư mục `/opt/thiepcuoi` (mọi file quyền 600):
+  - `docker-compose.prod.yml`: 3 service `api-blue` (127.0.0.1:8000), `api-green` (127.0.0.1:8002), `api-staging` (127.0.0.1:8001).
+  - `.env`: chỉ biến của compose. `API_REPOSITORY` (địa chỉ ECR) và `API_IMAGE_BLUE`, `API_IMAGE_GREEN`, `API_IMAGE_STAGING`; `deploy.sh` ghi tag vào đây.
+  - `production.env`, `staging.env`: cấu hình app của từng môi trường, theo mẫu `.env.production.example`; secret lấy từ Parameter Store.
+  - `deploy.sh`: bản để chạy tay. CI không dùng bản này, mà luôn gửi bản trong commit đang deploy.
+- Compose tự đặt `APP_ENV` (`production` hoặc `staging`), `COOKIE_SECURE=true`, `S3_REGION=ap-southeast-2` và để trống endpoint, key S3 (boto3 lấy quyền từ IAM role). `deploy.sh` không chạy khi file env thiếu biến bắt buộc; `JWT_SECRET` yếu thì API production không khởi động.
+- Nginx: `/etc/nginx/conf.d/thiepcuoi-upstream.conf` chỉ chứa `upstream thiepcuoi_production`, trỏ cổng của màu đang phục vụ. Chỉ `deploy.sh` sửa file này.
 - Vào máy: `aws ssm start-session --target <instance-id>` (cần Session Manager plugin) hoặc chạy lệnh bằng `aws ssm send-command`. SSH bằng key `thiepcuoi-ec2-key` chỉ được từ IP đã mở trong `thiepcuoi-api-sg`.
 
-**Phát hành phiên bản mới**
+**CI/CD: phát hành phiên bản mới**
 
-Trên máy dev (Mac arm64, cùng kiến trúc với EC2; máy x86 thì build bằng `docker buildx build --platform linux/arm64`):
+Quy trình (`.gitlab-ci.yml`, xem ở GitLab › Build › Pipelines):
+
+1. Tạo nhánh từ `main`, push lên GitLab, mở Merge Request. Pipeline MR chạy `lint` (ruff) và `test` (alembic check, pytest với PostgreSQL 16). Nhánh `main` được bảo vệ: chỉ merge qua MR, pipeline phải xanh.
+2. Merge vào `main` → pipeline `main`:
+   1. `lint`, `test`.
+   2. `build`: máy chạy ARM của GitLab (`saas-linux-small-arm64`), Docker-in-Docker, đăng nhập AWS bằng OIDC, đẩy image lên ECR với tag `$CI_COMMIT_SHORT_SHA`. Tag đã có thì dùng lại.
+   3. `deploy-staging` (tự động): `deploy/ssm-run.sh` gửi `deploy/deploy.sh` tới EC2 qua SSM. EC2 tải image, chạy migration database staging, khởi động lại `api-staging`, đợi `/health`, chạy seed.
+   4. `smoke-staging`: `scripts/smoke_test.py` chạy luồng thật vào `https://api-staging.ketduyen.me` (đăng ký → tạo thiệp → sự kiện → upload S3 → publish → trang public → CloudFront → xoá).
+   5. `deploy-production`: **đứng chờ nút ▶** (cổng duyệt). Chỉ người có quyền merge vào `main` bấm được.
+3. Blue-green khi bấm ▶ (`deploy.sh production <tag>`):
+   1. Màu đang nghỉ chạy image mới.
+   2. Chạy migration database production. Migration phải tương thích ngược: màu cũ vẫn phục vụ trên schema mới cho tới khi đổi màu.
+   3. Đợi `/health` của màu mới. Không khỏe thì tắt nó; màu cũ vẫn phục vụ.
+   4. Đổi upstream của Nginx, `nginx -s reload` (không cắt kết nối đang có).
+   5. Gọi `https://api.ketduyen.me/health` qua Nginx 5 lần. Lỗi thì **tự trả upstream về màu cũ**.
+   6. Chạy seed. Màu cũ vẫn chạy để rollback tức thì; lần deploy sau sẽ thay nó.
+4. Quay lại bản trước:
+   - GitLab › Operate › Environments › `production` › chọn lần deploy cũ › Re-deploy.
+   - Hoặc trên EC2: `sudo bash /opt/thiepcuoi/deploy.sh rollback`, đổi ngay sang màu kia nếu nó còn khỏe.
+5. Xem trạng thái: `sudo bash /opt/thiepcuoi/deploy.sh status`.
+
+Cấu hình GitLab cần có: biến CI/CD `AWS_ROLE_ARN` (ARN của role `thiepcuoi-gitlab-ci`, Protected); nhánh `main` protected (Allowed to push: No one; Allowed to merge: Maintainers); Settings › Merge requests › Pipelines must succeed. GitLab Free không có "Protected environments", nên cổng duyệt là job `when: manual` trên nhánh được bảo vệ.
+
+Làm tay khi GitLab CI không dùng được. Trên máy dev (Mac arm64, cùng kiến trúc với EC2):
 
 ```bash
-TAG=$(git rev-parse --short HEAD)
+TAG=$(git rev-parse --short=8 HEAD)
 REGISTRY=<account-id>.dkr.ecr.ap-southeast-2.amazonaws.com
 aws ecr get-login-password | docker login --username AWS --password-stdin $REGISTRY
-docker build -t $REGISTRY/thiepcuoi-api:$TAG .
-docker push $REGISTRY/thiepcuoi-api:$TAG
+docker build -t $REGISTRY/thiepcuoi-api:$TAG . && docker push $REGISTRY/thiepcuoi-api:$TAG
+bash deploy/ssm-run.sh staging $TAG        # rồi: uv run python -I scripts/smoke_test.py https://api-staging.ketduyen.me
+bash deploy/ssm-run.sh production $TAG
 ```
 
-Trên EC2:
-
-```bash
-cd /opt/thiepcuoi
-sudo sed -i "s|^API_IMAGE=.*|API_IMAGE=<REGISTRY>/thiepcuoi-api:<TAG>|" .env
-sudo docker compose -f docker-compose.prod.yml pull
-sudo docker compose -f docker-compose.prod.yml run --rm api alembic upgrade head
-sudo docker compose -f docker-compose.prod.yml up -d
-```
-
-Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
+- Seed chỉ thêm và cập nhật mẫu theo `key`, không xoá mẫu đã bỏ khỏi danh sách: mẫu đã bỏ phải xoá bằng SQL (`docs/modules/templates.md`).
+- Khi đã có dữ liệu production, đổi model thì thêm migration mới (`uv run alembic revision --autogenerate -m "mo ta"`), đọc lại file sinh ra rồi mới commit.
+- Smoke test để lại user thử `e2e-...@example.com` trong database staging (API không có endpoint xoá tài khoản).
 
 **Domain và HTTPS**
 
@@ -290,7 +321,8 @@ DNS của `ketduyen.me` nằm ở Namecheap › Advanced DNS:
 
 | Bản ghi | Giá trị | Dùng cho |
 | --- | --- | --- |
-| A `api` | Elastic IP của EC2 | API; chứng chỉ Let's Encrypt do certbot cấp trên EC2 (`certbot --nginx --redirect`), tự gia hạn (`certbot.timer`) |
+| A `api` | Elastic IP của EC2 | API production; chứng chỉ Let's Encrypt do certbot cấp trên EC2 (`certbot --nginx --redirect`), tự gia hạn (`certbot.timer`) |
+| A `api-staging` | Elastic IP của EC2 | API staging; chứng chỉ Let's Encrypt riêng, tự gia hạn |
 | ALIAS `@` | domain CloudFront do Amplify cấp (`aws amplify get-domain-association`) | web |
 | CNAME `www` | như dòng trên | web; Amplify chuyển 301 về `https://ketduyen.me` |
 | CNAME `_<mã>` | `_<mã>.acm-validations.aws.` | Amplify xác minh và gia hạn chứng chỉ của web; không xoá |
@@ -311,13 +343,13 @@ DNS của `ketduyen.me` nằm ở Namecheap › Advanced DNS:
 **Cookie và CORS**
 
 - Web và API cùng domain gốc `ketduyen.me`, nên `COOKIE_SAMESITE=lax`. Safari vẫn giữ được cookie `refresh_token`.
-- `.env` đặt `CORS_ORIGINS=https://ketduyen.me`. CORS của bucket cho `https://ketduyen.me` và `http://localhost:5173`.
+- `production.env` đặt `CORS_ORIGINS=https://ketduyen.me`; `staging.env` đặt `http://localhost:5173`. CORS của bucket như bảng ở trên.
 - Web chạy trên máy dev gọi API qua proxy của Vite (`/api`, đổi `Path` của cookie từ `/auth` thành `/api/auth`). Hướng dẫn ở `docs/backend.md` của repo web.
 - Địa chỉ mặc định của Amplify (`*.amplifyapp.com`) không gọi được API, vì khác domain gốc.
 - `FRONTEND_REVALIDATE_URL` để trống: web hiện là Vite SPA, chưa có route revalidate.
-- Sửa `.env` xong chạy lại `sudo docker compose -f docker-compose.prod.yml up -d`.
+- Sửa `production.env` hoặc `staging.env` xong thì deploy lại đúng tag đang chạy (`sudo bash /opt/thiepcuoi/deploy.sh production <tag>`; tag xem bằng `deploy.sh status`): không gián đoạn, và cấu hình mới được kiểm tra trước khi nhận request.
 
-**Kiểm tra:** `/health` trả `{"status": "ok"}`; Swagger (`/docs`) tự tắt khi `APP_ENV=production`.
+**Kiểm tra:** `/health` trả `{"status": "ok"}`; Swagger (`/docs`) tự tắt khi `APP_ENV=production`, mở ở staging (`https://api-staging.ketduyen.me/docs`).
 
 **Sao lưu và lưu ý**
 
