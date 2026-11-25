@@ -80,6 +80,7 @@ docker/ec2-user-data.sh      # chuẩn bị EC2 lần đầu: Docker, compose, N
 deploy/deploy.sh             # chạy trên EC2: deploy staging, blue-green production, rollback, status
 deploy/ssm-run.sh            # chạy ở CI hoặc máy dev: gửi deploy.sh tới EC2 qua SSM
 scripts/smoke_test.py        # luồng thật vào một môi trường đã deploy (job smoke-staging)
+infra/monitoring.yml         # CloudFormation: kiểm tra /health mỗi phút, cảnh báo email khi API chết
 ```
 
 Mỗi module gồm `models.py` (bảng), `schemas.py` (request/response), `service.py` (nghiệp vụ, là các hàm, không phụ thuộc HTTP) và `router.py` (endpoint mỏng, chỉ gọi service). `banks` không có bảng nên không có `models.py`.
@@ -350,6 +351,31 @@ DNS của `ketduyen.me` nằm ở Namecheap › Advanced DNS:
 - Sửa `production.env` hoặc `staging.env` xong thì deploy lại đúng tag đang chạy (`sudo bash /opt/thiepcuoi/deploy.sh production <tag>`; tag xem bằng `deploy.sh status`): không gián đoạn, và cấu hình mới được kiểm tra trước khi nhận request.
 
 **Kiểm tra:** `/health` trả `{"status": "ok"}`; Swagger (`/docs`) tự tắt khi `APP_ENV=production`, mở ở staging (`https://api-staging.ketduyen.me/docs`).
+
+**Cảnh báo khi API chết**
+
+Stack CloudFormation `thiepcuoi-monitoring` (`infra/monitoring.yml`), toàn bộ ở `ap-southeast-2`:
+
+```text
+EventBridge Scheduler (mỗi phút) → Lambda thiepcuoi-uptime: GET /health production, staging
+  → metric Thiepcuoi/Uptime: Healthy (1/0), LatencyMs, theo Environment
+  → alarm thiepcuoi-production-down, thiepcuoi-staging-down → SNS thiepcuoi-alerts → email
+```
+
+- **Khi nào báo:**
+  - Khỏe là trả 200 với body `{"status": "ok"}` trong 5 giây.
+  - Alarm chuyển ALARM khi **3 phút liên tục** có lần không khỏe, hoặc không có dữ liệu (bộ đo hỏng cũng báo). Hết lỗi thì gửi email OK.
+  - Deploy blue-green không gián đoạn, staging khởi động lại vài giây: không báo nhầm.
+- **Vì sao không dùng Route 53 health check:** metric của nó chỉ có ở `us-east-1`, mà gói Free của tài khoản không cho dùng SNS ở `us-east-1`.
+  - Hệ quả: bộ đo cũng nằm ở Sydney, nên không phát hiện được khi cả region Sydney sập.
+- **Triển khai, cập nhật** (lệnh ở đầu `infra/monitoring.yml`): `aws cloudformation deploy ... --parameter-overrides AlertEmail=<email>`.
+  - AWS gửi email *Subscription Confirmation*: phải bấm **Confirm subscription** thì mới nhận cảnh báo.
+- **Thử đường gửi email:** `aws cloudwatch set-alarm-state --alarm-name thiepcuoi-production-down --state-value ALARM --state-reason thu`. Phút sau, khi bộ đo ghi dữ liệu mới, alarm tự về OK.
+- **Xem:**
+  - CloudWatch › Alarms.
+  - CloudWatch › Metrics › `Thiepcuoi/Uptime` (thời gian phản hồi).
+  - Log Lambda: `/aws/lambda/thiepcuoi-uptime`, giữ 14 ngày.
+- **Chi phí:** khoảng 43.000 lần gọi Lambda mỗi tháng, 4 metric, 2 alarm, email: nằm trong mức miễn phí.
 
 **Sao lưu và lưu ý**
 
