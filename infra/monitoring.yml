@@ -1,0 +1,219 @@
+# Cảnh báo khi API chết (README › Lên production › Cảnh báo khi API chết).
+#
+#   EventBridge Scheduler (mỗi phút) → Lambda thiepcuoi-uptime: GET /health của production và staging
+#   → metric Thiepcuoi/Uptime (Healthy 1/0, LatencyMs) → CloudWatch Alarm (3 phút liên tục lỗi,
+#   hoặc không có dữ liệu) → SNS thiepcuoi-alerts → email.
+#
+# Toàn bộ ở ap-southeast-2: gói Free của tài khoản không cho dùng SNS ở us-east-1, nên không dùng
+# được Route 53 health check (metric của nó chỉ có ở us-east-1).
+#
+# Triển khai (cập nhật cũng là lệnh này):
+#   aws cloudformation deploy --region ap-southeast-2 --stack-name thiepcuoi-monitoring \
+#     --template-file infra/monitoring.yml --capabilities CAPABILITY_IAM \
+#     --parameter-overrides AlertEmail=<email> --tags Project=thiepcuoi
+# Gỡ: aws cloudformation delete-stack --region ap-southeast-2 --stack-name thiepcuoi-monitoring
+AWSTemplateFormatVersion: "2010-09-09"
+Description: thiepcuoi - kiem tra /health cua API moi phut, canh bao email khi loi 3 phut lien tuc
+
+Parameters:
+  AlertEmail:
+    Type: String
+    Default: ""
+    Description: Email nhan canh bao. De trong thi chua gui email (alarm van chay).
+  ProductionUrl:
+    Type: String
+    Default: https://api.ketduyen.me/health
+  StagingUrl:
+    Type: String
+    Default: https://api-staging.ketduyen.me/health
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
+
+Resources:
+  # ---------- Nơi nhận cảnh báo ----------
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: thiepcuoi-alerts
+      DisplayName: thiepcuoi canh bao
+
+  # AWS gửi email "Subscription Confirmation": phải bấm Confirm subscription thì mới nhận cảnh báo
+  AlertEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlertEmail
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # ---------- Bộ kiểm tra: Lambda ----------
+  CheckerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/thiepcuoi-uptime
+      RetentionInDays: 14
+
+  CheckerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: uptime-checker
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Chỉ được ghi metric vào đúng namespace của mình
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: "*"
+                Condition:
+                  StringEquals: { cloudwatch:namespace: Thiepcuoi/Uptime }
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt CheckerLogGroup.Arn
+
+  CheckerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CheckerLogGroup
+    Properties:
+      FunctionName: thiepcuoi-uptime
+      Description: GET /health cua production va staging, ghi metric Thiepcuoi/Uptime
+      Runtime: python3.13
+      Architectures: [arm64]
+      Handler: index.handler
+      MemorySize: 128
+      Timeout: 20
+      Role: !GetAtt CheckerRole.Arn
+      Environment:
+        Variables:
+          TARGETS: !Sub '{"production": "${ProductionUrl}", "staging": "${StagingUrl}"}'
+      Code:
+        ZipFile: |
+          """Gọi /health của từng môi trường, ghi metric Healthy (1/0) và LatencyMs vào CloudWatch."""
+
+          import json
+          import os
+          import time
+          import urllib.request
+
+          import boto3
+
+          NAMESPACE = "Thiepcuoi/Uptime"
+          TIMEOUT_SECONDS = 5
+          cloudwatch = boto3.client("cloudwatch")
+
+
+          def check(url):
+              """Khỏe khi trả 200 và đúng body {"status": "ok"} trong 5 giây."""
+              started = time.monotonic()
+              request = urllib.request.Request(url, headers={"User-Agent": "thiepcuoi-uptime"})
+              try:
+                  with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as resp:
+                      healthy = resp.status == 200 and json.loads(resp.read()) == {"status": "ok"}
+              except Exception as exc:  # mọi lỗi (DNS, TLS, timeout, 5xx) đều là không khỏe
+                  print(f"{url}: {exc!r}")
+                  healthy = False
+              return healthy, (time.monotonic() - started) * 1000
+
+
+          def handler(event, context):
+              metric_data = []
+              for environment, url in json.loads(os.environ["TARGETS"]).items():
+                  healthy, latency_ms = check(url)
+                  print(json.dumps({"environment": environment, "healthy": healthy,
+                                    "latency_ms": round(latency_ms)}))
+                  dimensions = [{"Name": "Environment", "Value": environment}]
+                  metric_data += [
+                      {"MetricName": "Healthy", "Dimensions": dimensions,
+                       "Value": 1 if healthy else 0, "Unit": "Count"},
+                      {"MetricName": "LatencyMs", "Dimensions": dimensions,
+                       "Value": latency_ms, "Unit": "Milliseconds"},
+                  ]
+              cloudwatch.put_metric_data(Namespace=NAMESPACE, MetricData=metric_data)
+              return {"checked": len(metric_data) // 2}
+
+  # ---------- Lịch chạy: mỗi phút ----------
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: scheduler.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals: { aws:SourceAccount: !Ref AWS::AccountId }
+      Policies:
+        - PolicyName: invoke-uptime-checker
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt CheckerFunction.Arn
+
+  CheckerSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: thiepcuoi-uptime-every-minute
+      Description: Goi Lambda thiepcuoi-uptime moi phut
+      ScheduleExpression: rate(1 minute)
+      FlexibleTimeWindow: { Mode: "OFF" }
+      Target:
+        Arn: !GetAtt CheckerFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+        RetryPolicy: { MaximumRetryAttempts: 0 } # lần sau 1 phút nữa đã chạy lại
+
+  # ---------- Cảnh báo ----------
+  # Minimum của Healthy trong 1 phút < 1 (có lần lỗi) suốt 3 phút liên tục → ALARM.
+  # Không có dữ liệu (Lambda hoặc lịch hỏng) cũng tính là lỗi: bộ đo hỏng thì không im lặng.
+  ProductionDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: thiepcuoi-production-down
+      AlarmDescription: >-
+        API production (https://api.ketduyen.me/health) loi 3 phut lien tuc.
+        Xem: sudo bash /opt/thiepcuoi/deploy.sh status; deploy.sh rollback (README > Len production).
+      Namespace: Thiepcuoi/Uptime
+      MetricName: Healthy
+      Dimensions: [{ Name: Environment, Value: production }]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+  StagingDownAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: thiepcuoi-staging-down
+      AlarmDescription: API staging (https://api-staging.ketduyen.me/health) loi 3 phut lien tuc.
+      Namespace: Thiepcuoi/Uptime
+      MetricName: Healthy
+      Dimensions: [{ Name: Environment, Value: staging }]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 3
+      DatapointsToAlarm: 3
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlertTopic]
+      OKActions: [!Ref AlertTopic]
+
+Outputs:
+  AlertTopicArn:
+    Value: !Ref AlertTopic
+  CheckerFunctionName:
+    Value: !Ref CheckerFunction

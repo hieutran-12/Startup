@@ -102,6 +102,7 @@ Trình duyệt ──► https://api.ketduyen.me ──► Nginx (EC2) ──►
 | Secret (SecureString) | `/thiepcuoi/prod/*`, `/thiepcuoi/staging/*` (`DB_PASSWORD`, `JWT_SECRET`) |
 | Staging: database `thiepcuoi_staging` (user riêng, không vào được database production), S3 `thiepcuoi-media-staging`, CloudFront `E362C5RDYEDSIH` | `api-staging.ketduyen.me` |
 | IAM role cho GitLab CI (OIDC, chỉ nhận `project_path:ketduyen/thiepcuoi-api:ref_type:branch:ref:main`) | `thiepcuoi-gitlab-ci` |
+| Cảnh báo khi API chết: stack CloudFormation (Lambda mỗi phút → alarm → SNS email), `infra/monitoring.yml` | `thiepcuoi-monitoring` |
 | Security group | `thiepcuoi-api-sg`, `thiepcuoi-db-sg` |
 | Amplify Hosting (web), nối GitHub, tự build khi push `main` | `ketduyen-web` (app ID `d3rx5bxsrz5mdw`, địa chỉ mặc định `main.d3rx5bxsrz5mdw.amplifyapp.com`) |
 
@@ -127,6 +128,8 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 - Pipeline `.gitlab-ci.yml`: MR → lint, test; `main` → lint, test, build (runner `saas-linux-small-arm64`, Docker-in-Docker, ECR) → deploy-staging → smoke-staging → deploy-production (bấm tay, blue-green).
 - GitLab đăng nhập AWS bằng OIDC: JWT `id_tokens` (`aud: sts.amazonaws.com`) → `assume-role-with-web-identity` role `thiepcuoi-gitlab-ci`; ARN ở biến CI/CD `AWS_ROLE_ARN`.
 - Người dùng tạo group `ketduyen` và project, push bằng Personal Access Token (Keychain của Mac). Hướng GitHub Actions (role `thiepcuoi-github-deploy`) đã bỏ và xoá trên AWS.
+- Đã chạy thật 25/11: MR !1 → `main` (`c155caf`) → 5/5 stage xanh → người dùng bấm duyệt → production `green` = `c155caf6`.
+- GitLab đẩy bản sao `main` sang GitHub (push mirror). Trên máy dev: remote `gitlab` để push; remote `github` chỉ kéo về, push bị khoá. **Không push thẳng lên GitHub.**
 
 ### Claude điều khiển EC2 bằng SSM, không có SSH
 
@@ -230,7 +233,7 @@ aws amplify list-apps --query 'apps[].[appId,name,defaultDomain]' --output text
 **Lộ trình nâng cấp khi có người dùng thật.** Hiện tại: 1 EC2 chạy cả staging và production blue-green, CI/CD GitLab (xong 25/11), hạ tầng dựng bằng CLI. Thứ tự nâng cấp:
 
 1. ~~CI/CD cho API~~ và ~~môi trường staging~~: xong 25/11 (GitLab CI, OIDC, blue-green).
-2. Theo dõi lỗi và cảnh báo: CloudWatch, báo khi `/health` lỗi.
+2. ~~Cảnh báo khi `/health` lỗi~~: xong 25/11 (`infra/monitoring.yml`). Còn thiếu: đo từ ngoài Sydney (ví dụ UptimeRobot), theo dõi lỗi trong app (log 5xx, Sentry).
 3. Tách staging ra máy riêng (hiện chung EC2 và chung instance RDS với production).
 4. Nhiều máy sau Load Balancer (ECS), RDS Multi-AZ, backup giữ lâu hơn (cần nâng gói).
 5. Hạ tầng viết thành code (CDK hoặc Terraform).
