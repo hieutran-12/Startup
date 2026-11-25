@@ -59,7 +59,7 @@ check_env_file() {
 # Đợi tối đa 60 giây cho tới khi /health của cổng trả 200
 wait_healthy() {
   for _ in $(seq 1 30); do
-    if curl -fsS -o /dev/null --max-time 3 "http://127.0.0.1:$1/health"; then return 0; fi
+    if curl -fs -o /dev/null --max-time 3 "http://127.0.0.1:$1/health"; then return 0; fi
     sleep 2
   done
   return 1
@@ -93,9 +93,10 @@ seed() { compose exec -T "$1" python -m app.scripts.seed_templates; }
 deploy_staging() {
   local tag=$1
   check_env_file staging.env
-  set_compose_var API_IMAGE_STAGING "$API_REPOSITORY:$tag"
   log "staging: image $tag"
-  compose pull -q api-staging
+  # Tải image trước: tag sai thì dừng ở đây, .env chưa bị đổi
+  docker pull -q "$API_REPOSITORY:$tag" >/dev/null
+  set_compose_var API_IMAGE_STAGING "$API_REPOSITORY:$tag"
   migrate api-staging
   compose up -d api-staging
   if ! wait_healthy "$(port_of staging)"; then
@@ -113,8 +114,9 @@ deploy_production() {
   next=$(other_color "$active")
   log "production: đang phục vụ $active, deploy $tag vào $next"
 
+  # Tải image trước: tag sai thì dừng ở đây, .env chưa bị đổi
+  docker pull -q "$API_REPOSITORY:$tag" >/dev/null
   set_compose_var "API_IMAGE_${next^^}" "$API_REPOSITORY:$tag"
-  compose pull -q "api-$next"
   # Migration phải tương thích ngược: bản $active (cũ) vẫn phục vụ trên schema mới cho tới khi đổi
   migrate "api-$next"
   compose up -d "api-$next"
